@@ -147,6 +147,12 @@ if 'user' not in st.session_state: st.session_state.user = ""
 if 'role' not in st.session_state: st.session_state.role = "موظف"
 if 'cart' not in st.session_state: st.session_state.cart = []
 
+# تهيئة متغيرات حفظ الحالة للتنقل بدون فقدان البيانات
+if 'form_sale_cust_name' not in st.session_state: st.session_state.form_sale_cust_name = ""
+if 'form_sale_cust_phone' not in st.session_state: st.session_state.form_sale_cust_phone = ""
+if 'form_sale_cust_address' not in st.session_state: st.session_state.form_sale_cust_address = ""
+if 'form_purchase_qty' not in st.session_state: st.session_state.form_purchase_qty = 1
+
 def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, address, pay_type, collect_system, collect_date, user, cart_items, sh_name, sh_address, sh_phone):
     collect_info = f"<tr><td><b>نظام التحصيل:</b> {collect_system}</td><td><b>تاريخ التحصيل:</b> {collect_date}</td></tr>" if pay_type == "آجل (على الحساب)" else ""
     
@@ -286,10 +292,8 @@ else:
     st.sidebar.title(f"👤 {st.session_state.user}")
     st.sidebar.write(f"الرتبة: **{st.session_state.role}**")
     
-    # تحويل القائمة المنسدلة إلى أزرار ثابتة لتسريع الانتقال بضغطة واحدة
     choice = st.sidebar.radio("📋 الأقسام الرئيسية للنظام:", sidebar_pages)
     
-    # استدعاء البيانات من الـ Session State
     inv_df = st.session_state.inv_df
     sales_df = st.session_state.sales_df
     returns_df = st.session_state.returns_df
@@ -475,7 +479,10 @@ else:
                     item_row = matching_items.iloc[0]
                     default_pur_price = float(item_row['سعر الشراء']) if 'سعر الشراء' in item_row else 0.0
                     actual_purchase_price = c3.number_input("سعر الشراء المعتمد لهذه الفاتورة", value=default_pur_price, min_value=0.0)
-                    qty = c4.number_input("الكمية المشتراة", min_value=1, step=1)
+                    
+                    # ربط كمية الشراء بالـ Session State لمنع الضياع عند التنقل
+                    qty = c4.number_input("الكمية المشتراة", min_value=1, step=1, value=st.session_state.form_purchase_qty)
+                    st.session_state.form_purchase_qty = qty
                     
                     total = actual_purchase_price * qty
                     if st.button("حفظ المشتريات وإدخلها للمخزن المحدد"):
@@ -487,6 +494,7 @@ else:
                         new_p = pd.DataFrame([{"رقم الفاتورة": pur_id, "التاريخ": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "المورد": vendor, "كود الصنف": selected_item_code, "الصنف": item_row['اسم الصنف'], "تصنيف الصنف": item_row['تصنيف الصنف'], "نوع الوحدة": item_row['نوع الوحدة'], "موقع المخزن": item_row['موقع المخزن'], "سعر الشراء المعتمد": str(actual_purchase_price), "الكمية": str(qty), "إجمالي الشراء": str(total), "المسؤول": st.session_state.user}])
                         st.session_state.purchases_df = pd.concat([purchases_df, new_p], ignore_index=True)
                         st.session_state.purchases_df.to_csv(PURCHASES_FILE, index=False, encoding='utf-8-sig')
+                        st.session_state.form_purchase_qty = 1  # إعادة تعيين الافتراضي بعد الحفظ
                         st.success("✅ تم تسجيل الوارد وتحديث المخزن والـ Session بنجاح!")
                         st.rerun()
                         
@@ -528,9 +536,14 @@ else:
                 c_address = contacts_df[contacts_df['الاسم'] == c_name]['العنوان'].values[0] if len(contacts_df[contacts_df['الاسم'] == c_name]) > 0 else ""
                 c_phone = contacts_df[contacts_df['الاسم'] == c_name]['الهاتف'].values[0] if len(contacts_df[contacts_df['الاسم'] == c_name]) > 0 else ""
             else:
-                c_name = c2.text_input("اسم العميل")
-                c_phone = c3.text_input("رقم هاتف العميل")
-                c_address = c4.text_input("عنوان العميل")
+                # ربط المدخلات بالـ Session state لمنع مسح الحقول عند التنقل
+                c_name = c2.text_input("اسم العميل", value=st.session_state.form_sale_cust_name)
+                c_phone = c3.text_input("رقم هاتف العميل", value=st.session_state.form_sale_cust_phone)
+                c_address = c4.text_input("عنوان العميل", value=st.session_state.form_sale_cust_address)
+                
+                st.session_state.form_sale_cust_name = c_name
+                st.session_state.form_sale_cust_phone = c_phone
+                st.session_state.form_sale_cust_address = c_address
             
             visit_count = 0
             if c_name and not sales_df.empty:
@@ -704,6 +717,11 @@ else:
                         st.session_state.sales_df = pd.concat([sales_df, pd.DataFrame(new_sales_entries)], ignore_index=True)
                         st.session_state.sales_df.to_csv(SALES_FILE, index=False, encoding='utf-8-sig')
                         
+                        # تصفير حقول الإدخال المحفوظة بعد النجاح
+                        st.session_state.form_sale_cust_name = ""
+                        st.session_state.form_sale_cust_phone = ""
+                        st.session_state.form_sale_cust_address = ""
+                        
                         st.success("🎉 تم تسجيل وحفظ الفاتورة بالكامل بنجاح في النظام!")
                         
                         triple_html = generate_triple_invoice_html(inv_id, current_datetime_str, c_name, c_phone, c_address, sale_type, collect_system, collect_date, st.session_state.user, st.session_state.cart, SHOWROOM_NAME, SHOWROOM_ADDRESS, INQUIRY_NUMBER)
@@ -712,7 +730,7 @@ else:
                         
                         st.session_state.cart = []
 
-    # --- 7. صفحة ارتجاع فواتير البيع (النسخة الكاملة والمطورة لبند أو فاتورة بالكامل) ---
+    # --- 7. صفحة ارتجاع فواتير البيع (محدثة بالكامل لارتجاع بند أو فاتورة كاملة) ---
     elif "↩️ ارتجاع فواتير البيع" in choice:
         st.header("↩️ منظومة ارتجاع المبيعات ومردودات الفواتير المطورة")
         
@@ -732,84 +750,123 @@ else:
             if not matching_sales.empty:
                 selected_ret_inv = st.selectbox("اختر رقم الفاتورة التي تحتوي على الأصناف المراد إرجاعها", matching_sales['رقم الفاتورة'].unique())
                 
-                # جلب العناصر التابعة للفاتورة المحددة فقط والتي كميتها أكبر من 0
                 invoice_items = sales_df[(sales_df['رقم الفاتورة'] == selected_ret_inv) & (pd.to_numeric(sales_df['الكمية'], errors='coerce') > 0)]
                 
                 if invoice_items.empty:
                     st.warning("⚠️ هذه الفاتورة تم إرجاع كافة بنودها بالكامل مسبقاً!")
                 else:
-                    st.markdown("### 📦 البضائع المتاحة للارتجاع في هذه الفاتورة:")
+                    return_scope = st.radio("نطاق عملية الارتجاع:", ["إرجاع بند محدد فقط", "إرجاع الفاتورة بالكامل بضغطة واحدة"])
                     
-                    # عمل خيار للمستخدم لاختيار بند واحد محدد لارتجاعه من الفاتورة
-                    item_options = {row['كود الصنف']: f"{row['كود الصنف']} - {row['الصنف']} (الكمية الحالية بالفاتورة: {row['الكمية']})" for _, row in invoice_items.iterrows()}
-                    selected_item_code = st.selectbox("اختر البند المراد إرجاعه أو جزء منه", list(item_options.keys()), format_func=lambda x: item_options[x])
-                    
-                    # جلب بيانات السطر المحدد
-                    target_row = invoice_items[invoice_items['كود الصنف'] == selected_item_code].iloc[0]
-                    sales_row_idx = invoice_items[invoice_items['كود الصنف'] == selected_item_code].index[0]
-                    
-                    purchased_qty = int(target_row['الكمية'])
-                    unit_price = float(target_row['سعر الوحدة'])
-                    discount_per = float(target_row['الخصم %'])
-                    
-                    # الحساب الدقيق لسعر الوحدة بعد الخصم
-                    actual_unit_price = unit_price * (1 - (discount_per / 100))
-                    
-                    # إدخال الكمية المرتجعة
-                    ret_qty = st.number_input(f"الكمية المراد إرجاعها من {target_row['الصنف']}", min_value=1, max_value=purchased_qty, value=1, step=1)
-                    
-                    # حساب المبلغ المستحق رده للعميل
-                    refund_amount = ret_qty * actual_unit_price
-                    st.metric(label="💰 المبلغ المالي المراد ردّه للعميل", value=f"{refund_amount:,.2f} جنيه مصري")
-                    
-                    if st.button("↩️ تأكيد عملية الارتجاع وإعادة البضاعة للمخزن", type="primary", use_container_width=True):
+                    if return_scope == "إرجاع بند محدد فقط":
+                        st.markdown("### 📦 إرجاع جزء أو بند معين:")
+                        item_options = {row['كود الصنف']: f"{row['كود الصنف']} - {row['الصنف']} (الكمية الحالية بالفاتورة: {row['الكمية']})" for _, row in invoice_items.iterrows()}
+                        selected_item_code = st.selectbox("اختر البند المراد إرجاعه أو جزء منه", list(item_options.keys()), format_func=lambda x: item_options[x])
                         
-                        # 1. تحديث كمية المنتج في جدول المخزن الرئيسي (إعادتها للرف)
-                        if selected_item_code in inv_df['كود الصنف'].values:
-                            inv_idx = inv_df[inv_df['كود الصنف'] == selected_item_code].index[0]
-                            st.session_state.inv_df.at[inv_idx, 'الكمية'] = int(inv_df.at[inv_idx, 'الكمية']) + ret_qty
-                            st.session_state.inv_df.to_csv(INVENTORY_FILE, index=False, encoding='utf-8-sig')
+                        target_row = invoice_items[invoice_items['كود الصنف'] == selected_item_code].iloc[0]
+                        sales_row_idx = invoice_items[invoice_items['كود الصنف'] == selected_item_code].index[0]
                         
-                        # 2. احتساب القيم الجديدة التناقصية للفاتورة الأصلية لحماية التقارير المالية والأرباح
-                        new_qty = purchased_qty - ret_qty
-                        if new_qty == 0:
-                            # تصفير السطر تماماً في حال إرجاع البند بالكامل
-                            st.session_state.sales_df.at[sales_row_idx, 'الكمية'] = 0
-                            st.session_state.sales_df.at[sales_row_idx, 'إجمالي البيع'] = 0
-                            st.session_state.sales_df.at[sales_row_idx, 'تكلفة الشراء الإجمالية'] = 0
-                            st.session_state.sales_df.at[sales_row_idx, 'صافي ربح الفاتورة'] = 0
-                        else:
-                            # تعديل قيم السطر تناسبياً مع الكمية المتبقية
-                            st.session_state.sales_df.at[sales_row_idx, 'الكمية'] = new_qty
-                            st.session_state.sales_df.at[sales_row_idx, 'إجمالي البيع'] = new_qty * actual_unit_price
+                        purchased_qty = int(target_row['الكمية'])
+                        unit_price = float(target_row['سعر الوحدة'])
+                        discount_per = float(target_row['الخصم %'])
+                        
+                        actual_unit_price = unit_price * (1 - (discount_per / 100))
+                        ret_qty = st.number_input(f"الكمية المراد إرجاعها من {target_row['الصنف']}", min_value=1, max_value=purchased_qty, value=1, step=1)
+                        refund_amount = ret_qty * actual_unit_price
+                        
+                        st.metric(label="💰 المبلغ المالي المراد ردّه للعميل", value=f"{refund_amount:,.2f} جنيه مصري")
+                        
+                        if st.button("↩️ تأكيد عملية الارتجاع المحددة وإعادة البضاعة للمخزن", type="primary", use_container_width=True):
+                            if selected_item_code in inv_df['كود الصنف'].values:
+                                inv_idx = inv_df[inv_df['كود الصنف'] == selected_item_code].index[0]
+                                st.session_state.inv_df.at[inv_idx, 'الكمية'] = int(inv_df.at[inv_idx, 'الكمية']) + ret_qty
+                                st.session_state.inv_df.to_csv(INVENTORY_FILE, index=False, encoding='utf-8-sig')
                             
-                            # حساب التكلفة التناقصية بناءً على تكلفة القطعة الواحدة الأصلية
-                            single_cost = float(target_row['تكلفة الشراء الإجمالية']) / purchased_qty
-                            new_total_cost = single_cost * new_qty
-                            st.session_state.sales_df.at[sales_row_idx, 'تكلفة الشراء الإجمالية'] = new_total_cost
-                            st.session_state.sales_df.at[sales_row_idx, 'صافي ربح الفاتورة'] = (new_qty * actual_unit_price) - new_total_cost
+                            new_qty = purchased_qty - ret_qty
+                            if new_qty == 0:
+                                st.session_state.sales_df.at[sales_row_idx, 'الكمية'] = 0
+                                st.session_state.sales_df.at[sales_row_idx, 'إجمالي البيع'] = 0
+                                st.session_state.sales_df.at[sales_row_idx, 'تكلفة الشراء الإجمالية'] = 0
+                                st.session_state.sales_df.at[sales_row_idx, 'صافي ربح الفاتورة'] = 0
+                            else:
+                                st.session_state.sales_df.at[sales_row_idx, 'الكمية'] = new_qty
+                                st.session_state.sales_df.at[sales_row_idx, 'إجمالي البيع'] = new_qty * actual_unit_price
+                                single_cost = float(target_row['تكلفة الشراء الإجمالية']) / purchased_qty
+                                new_total_cost = single_cost * new_qty
+                                st.session_state.sales_df.at[sales_row_idx, 'تكلفة الشراء الإجمالية'] = new_total_cost
+                                st.session_state.sales_df.at[sales_row_idx, 'صافي ربح الفاتورة'] = (new_qty * actual_unit_price) - new_total_cost
+                            
+                            st.session_state.sales_df.to_csv(SALES_FILE, index=False, encoding='utf-8-sig')
+                            
+                            return_id = "RET-" + str(int(datetime.now().timestamp()))
+                            new_return_row = pd.DataFrame([{
+                                "رقم الإرجاع": return_id,
+                                "رقم الفاتورة الأصلية": selected_ret_inv,
+                                "التاريخ": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "اسم العميل": target_row['اسم العميل'],
+                                "كود الصنف": selected_item_code,
+                                "الصنف": target_row['الصنف'],
+                                "الكمية المرجعة": str(ret_qty),
+                                "المبلغ المردود": f"{refund_amount:.2f}",
+                                "المسؤول": st.session_state.user
+                            }])
+                            st.session_state.returns_df = pd.concat([returns_df, new_return_row], ignore_index=True)
+                            st.session_state.returns_df.to_csv(RETURNS_FILE, index=False, encoding='utf-8-sig')
+                            
+                            st.success(f"🎉 تم تسجيل المرتجع الجزئي بنجاح برقم سند ({return_id})")
+                            st.rerun()
+
+                    elif return_scope == "إرجاع الفاتورة بالكامل بضغطة واحدة":
+                        st.markdown("### ⚠️ إرجاع الفاتورة بكامل بنودها:")
+                        total_refund_all = 0.0
+                        for _, row in invoice_items.iterrows():
+                            u_p = float(row['سعر الوحدة'])
+                            d_p = float(row['الخصم %'])
+                            q_y = int(row['الكمية'])
+                            total_refund_all += (q_y * u_p * (1 - (d_p / 100)))
+                            
+                        st.metric(label="💰 إجمالي المبلغ الكلي المراد ردّه للعميل (كامل الفاتورة)", value=f"{total_refund_all:,.2f} جنيه مصري")
                         
-                        # حفظ التعديلات في ملف المبيعات
-                        st.session_state.sales_df.to_csv(SALES_FILE, index=False, encoding='utf-8-sig')
-                        
-                        # 3. تسجيل حركة الارتجاع في ملف المردودات المستقل لمراقبة الموظفين والمخازن
-                        return_id = "RET-" + str(int(datetime.now().timestamp()))
-                        new_return_row = pd.DataFrame([{
-                            "رقم الإرجاع": return_id,
-                            "رقم الفاتورة الأصلية": selected_ret_inv,
-                            "التاريخ": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "اسم العميل": target_row['اسم العميل'],
-                            "كود الصنف": selected_item_code,
-                            "الصنف": target_row['الصنف'],
-                            "الكمية المرجعة": str(ret_qty),
-                            "المبلغ المردود": f"{refund_amount:.2f}",
-                            "المسؤول": st.session_state.user
-                        }])
-                        st.session_state.returns_df = pd.concat([returns_df, new_return_row], ignore_index=True)
-                        st.session_state.returns_df.to_csv(RETURNS_FILE, index=False, encoding='utf-8-sig')
-                        
-                        st.success(f"🎉 تم تسجيل المرتجع برقم سند ({return_id}) وتحديث المخزن والتقارير المالية الحية!")
-                        st.rerun()
+                        if st.button("🚨 تأكيد إرجاع الفاتورة بالكامل وإعادتها للمخازن فوراً", type="primary", use_container_width=True):
+                            return_id = "RET-ALL-" + str(int(datetime.now().timestamp()))
+                            new_returns_list = []
+                            
+                            for _, row in invoice_items.iterrows():
+                                s_row_idx = row.name
+                                item_code = row['كود الصنف']
+                                r_qty = int(row['الكمية'])
+                                u_p = float(row['سعر الوحدة'])
+                                d_p = float(row['الخصم %'])
+                                ref_amt = r_qty * u_p * (1 - (d_p / 100))
+                                
+                                if item_code in inv_df['كود الصنف'].values:
+                                    inv_idx = inv_df[inv_df['كود الصنف'] == item_code].index[0]
+                                    st.session_state.inv_df.at[inv_idx, 'الكمية'] = int(inv_df.at[inv_idx, 'الكمية']) + r_qty
+                                
+                                st.session_state.sales_df.at[s_row_idx, 'الكمية'] = 0
+                                st.session_state.sales_df.at[s_row_idx, 'إجمالي البيع'] = 0
+                                st.session_state.sales_df.at[s_row_idx, 'تكلفة الشراء الإجمالية'] = 0
+                                st.session_state.sales_df.at[s_row_idx, 'صافي ربح الفاتورة'] = 0
+                                
+                                new_returns_list.append({
+                                    "رقم الإرجاع": return_id,
+                                    "رقم الفاتورة الأصلية": selected_ret_inv,
+                                    "التاريخ": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    "اسم العميل": row['اسم العميل'],
+                                    "كود الصنف": item_code,
+                                    "الصنف": row['الصنف'],
+                                    "الكمية المرجعة": str(r_qty),
+                                    "المبلغ المردود": f"{ref_amt:.2f}",
+                                    "المسؤول": st.session_state.user
+                                })
+                            
+                            st.session_state.inv_df.to_csv(INVENTORY_FILE, index=False, encoding='utf-8-sig')
+                            st.session_state.sales_df.to_csv(SALES_FILE, index=False, encoding='utf-8-sig')
+                            
+                            st.session_state.returns_df = pd.concat([returns_df, pd.DataFrame(new_returns_list)], ignore_index=True)
+                            st.session_state.returns_df.to_csv(RETURNS_FILE, index=False, encoding='utf-8-sig')
+                            
+                            st.success(f"🎉 تم إرجاع الفاتورة {selected_ret_inv} بالكامل، وإعادة كافة محتوياتها للرفوف بنجاح!")
+                            st.rerun()
 
             st.markdown("---")
             st.subheader("📋 سجل فواتير الإرجاع والمرتودات السابقة")
@@ -834,7 +891,6 @@ else:
                 
                 rebuild_cart = []
                 for _, r in invoice_rows.iterrows():
-                    # تخطي البنود التي تم تصفيرها بسبب الارتجاع الكامل
                     if int(r['الكمية']) == 0:
                         continue
                     rebuild_cart.append({
@@ -860,44 +916,69 @@ else:
                     st.markdown(get_download_link(triple_html, f"إعادة_طباعة_فاتورة_{selected_inv_id}.html"), unsafe_allow_html=True)
                     st.markdown(triple_html, unsafe_allow_html=True)
 
-    # --- 9. صفحة تقارير البيع والشراء والأرباح ---
+    # --- 9. صفحة تقارير البيع والشراء والأرباح (محدثة بميزة من تاريخ إلى تاريخ) ---
     elif "📈 تقارير البيع والشراء والأرباح" in choice:
         st.header(f"📈 التقارير المالية التفصيلية وحساب الأرباح لـ {SHOWROOM_NAME}")
         
-        total_sales = pd.to_numeric(sales_df['إجمالي البيع'], errors='coerce').sum()
-        total_purchases = pd.to_numeric(purchases_df['إجمالي الشراء'], errors='coerce').sum()
-        total_expenses = pd.to_numeric(exp_df['المبلغ'], errors='coerce').sum()
-        total_returned_value = pd.to_numeric(returns_df['المبلغ المردود'], errors='coerce').sum() if not returns_df.empty else 0.0
+        # صندوق الفلترة الزمنية الذكي
+        st.subheader("🔍 فلترة أرباح النظام وحساباتك لفترة زمنية محددة")
+        col_d1, col_d2 = st.columns(2)
+        start_date = col_d1.date_input("من تاريخ", value=pd.to_datetime("2026-01-01"))
+        end_date = col_d2.date_input("إلى تاريخ", value=datetime.now().date())
         
-        total_sales_cost = pd.to_numeric(sales_df['تكلفة الشراء الإجمالية'], errors='coerce').sum() if 'تكلفة الشراء الإجمالية' in sales_df else 0.0
+        # تحويل الأعمدة في الجداول إلى صيغة تاريخ للمقارنة البرمجية الدقيقة
+        sales_df['ParsedDate'] = pd.to_datetime(sales_df['التاريخ'], errors='coerce').dt.date
+        purchases_df['ParsedDate'] = pd.to_datetime(purchases_df['التاريخ'], errors='coerce').dt.date
+        exp_df['ParsedDate'] = pd.to_datetime(exp_df['التاريخ'], errors='coerce').dt.date
+        returns_df['ParsedDate'] = pd.to_datetime(returns_df['التاريخ'], errors='coerce').dt.date if not returns_df.empty else None
+        
+        # تطبيق الفلترة الفعلية بناء على اختيارات المستخدم
+        f_sales = sales_df[(sales_df['ParsedDate'] >= start_date) & (sales_df['ParsedDate'] <= end_date)]
+        f_purchases = purchases_df[(purchases_df['ParsedDate'] >= start_date) & (purchases_df['ParsedDate'] <= end_date)]
+        f_expenses = exp_df[(exp_df['ParsedDate'] >= start_date) & (exp_df['ParsedDate'] <= end_date)]
+        if not returns_df.empty:
+            f_returns = returns_df[(returns_df['ParsedDate'] >= start_date) & (returns_df['ParsedDate'] <= end_date)]
+        else:
+            f_returns = returns_df
+
+        # احتساب المؤشرات المالية المفلترة
+        total_sales = pd.to_numeric(f_sales['إجمالي البيع'], errors='coerce').sum()
+        total_purchases = pd.to_numeric(f_purchases['إجمالي الشراء'], errors='coerce').sum()
+        total_expenses = pd.to_numeric(f_expenses['المبلغ'], errors='coerce').sum()
+        total_returned_value = pd.to_numeric(f_returns['المبلغ المردود'], errors='coerce').sum() if not f_returns.empty else 0.0
+        
+        total_sales_cost = pd.to_numeric(f_sales['تكلفة الشراء الإجمالية'], errors='coerce').sum() if 'تكلفة الشراء الإجمالية' in f_sales else 0.0
         net_profit_actual = total_sales - total_sales_cost - total_expenses
         
+        st.markdown(f"##### 📊 نتيجه الحسابات الماليّة من تاريخ `{start_date}` إلى تاريخ `{end_date}`:")
         m1, m2, m3, m4 = st.columns(4)
-        m1.metric("💰 صافي المبيعات الحالية بالفواتير", f"{total_sales:,.2f} جنيه")
-        m2.metric("↩️ إجمالي قيم المردودات المستقلة", f"{total_returned_value:,.2f} جنيه")
-        m3.metric("💸 إجمالي المصاريف العمومية", f"{total_expenses:,.2f} جنيه")
+        m1.metric("💰 صافي المبيعات بالفتره", f"{total_sales:,.2f} جنيه")
+        m2.metric("↩️ إجمالي المردودات بالفتره", f"{total_returned_value:,.2f} جنيه")
+        m3.metric("💸 المصاريف العمومية بالفتره", f"{total_expenses:,.2f} جنيه")
         m4.metric("📊 الصافي الحقيقي للأرباح الدقيقة", f"{net_profit_actual:,.2f} جنيه")
         
         st.markdown("---")
-        t_sales_rep, t_purchases_rep = st.tabs(["📋 تقرير حركة المبيعات الشامل", "📋 تقرير حركة المشتريات الشامل"])
+        t_sales_rep, t_purchases_rep = st.tabs(["📋 تقرير حركة المبيعات المفلتر", "📋 تقرير حركة المشتريات المفلتر"])
         
         with t_sales_rep:
-            st.subheader("سجل المبيعات الصادرة")
-            st.dataframe(sales_df, use_container_width=True)
-            if not sales_df.empty:
+            st.subheader("سجل المبيعات الصادرة للفترة المحددة")
+            display_sales = f_sales.drop(columns=['ParsedDate']) if 'ParsedDate' in f_sales.columns else f_sales
+            st.dataframe(display_sales, use_container_width=True)
+            if not display_sales.empty:
                 out_sales = BytesIO()
                 with pd.ExcelWriter(out_sales, engine='xlsxwriter') as wr:
-                    sales_df.to_excel(wr, index=False, sheet_name='المبيعات')
-                st.download_button("📥 تحميل تقرير المبيعات بصيغة Excel", data=out_sales.getvalue(), file_name="تقرير_المبيعات_الشامل.xlsx", mime="application/vnd.ms-excel")
+                    display_sales.to_excel(wr, index=False, sheet_name='المبيعات')
+                st.download_button("📥 تحميل تقرير المبيعات المفلتر (Excel)", data=out_sales.getvalue(), file_name=f"تقرير_المبيعات_{start_date}_إلى_{end_date}.xlsx", mime="application/vnd.ms-excel")
                 
         with t_purchases_rep:
-            st.subheader("سجل حركة المشتريات الواردة")
-            st.dataframe(purchases_df, use_container_width=True)
-            if not purchases_df.empty:
+            st.subheader("سجل حركة المشتريات الواردة للفترة المحددة")
+            display_purchases = f_purchases.drop(columns=['ParsedDate']) if 'ParsedDate' in f_purchases.columns else f_purchases
+            st.dataframe(display_purchases, use_container_width=True)
+            if not display_purchases.empty:
                 out_pur = BytesIO()
                 with pd.ExcelWriter(out_pur, engine='xlsxwriter') as wr:
-                    purchases_df.to_excel(wr, index=False, sheet_name='المشتريات')
-                st.download_button("📥 تحميل تقرير المشتريات بصيغة Excel", data=out_pur.getvalue(), file_name="تقرير_المشتريات_الشامل.xlsx", mime="application/vnd.ms-excel")
+                    display_purchases.to_excel(wr, index=False, sheet_name='المشتريات')
+                st.download_button("📥 تحميل تقرير المشتريات المفلتر (Excel)", data=out_pur.getvalue(), file_name=f"تقرير_المشتريات_{start_date}_إلى_{end_date}.xlsx", mime="application/vnd.ms-excel")
 
     # --- 10. صفحة المصاريف ---
     elif "💸 المصاريف" in choice:
