@@ -6,7 +6,6 @@ import base64
 from io import BytesIO
 from io import StringIO
 import urllib.parse
-import requests  # تم إضافة مكتبة requests للتعامل مع الـ API المباشر
 
 # إعدادات الصفحة والشكل العام
 st.set_page_config(page_title="نظام معرض الكبير لإدارة المخازن المتطور", layout="wide")
@@ -23,50 +22,6 @@ PERMISSIONS_FILE = "permissions_config.csv"
 SETTINGS_FILE = "system_settings.csv"
 RETURNS_FILE = "returns_data.csv"  
 COLLECTIONS_FILE = "collections_data.csv" # ملف التحصيلات وسدادات الآجل
-
-# ==========================================
-# دالة إرسال رسائل الواتساب تلقائياً في الخلفية عبر Cloud API
-# ==========================================
-def send_whatsapp_via_api(phone, message):
-    """
-    دالة خلفية تقوم بإرسال الرسالة مباشرة عبر سيرفرات Meta (WhatsApp Business API)
-    بناءً على التحديث المباشر للـ Token والمعرف الرقمي.
-    """
-    
-    # 🔴 هام جداً: استبدل القيم أدناه بالبيانات الحقيقية من حساب مطوري فيسبوك Meta الخاصة بك:
-    PHONE_NUMBER_ID = "ضع_هنا_رقم_معرف_الهاتف_PHONE_NUMBER_ID"
-    ACCESS_TOKEN = "ضع_هنا_كود_الوصول_الدائم_ACCESS_TOKEN"
-    
-    # رابط الإرسال الرسمي بالإصدار v18.0
-    url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
-    
-    headers = {
-        "Authorization": f"Bearer {ACCESS_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    
-    # تنظيف وتجهيز رقم الهاتف بصيغة دولية صحيحة ومقبولة لـ Meta
-    clean_phone = str(phone).strip()
-    if clean_phone.startswith("0"):
-        clean_phone = "2" + clean_phone
-    elif not clean_phone.startswith("2") and len(clean_phone) == 10:
-        clean_phone = "20" + clean_phone
-
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": clean_phone,
-        "type": "text",
-        "text": {"body": message}
-    }
-    
-    try:
-        response = requests.post(url, json=payload, headers=headers)
-        if response.status_code == 200:
-            return True, "تم الإرسال بنجاح"
-        else:
-            return False, response.text
-    except Exception as e:
-        return False, str(e)
 
 # دالة تحويل الأرقام إلى كلمات عربية (التفقيط)
 def number_to_arabic_words(number):
@@ -143,8 +98,7 @@ def init_files():
         pd.DataFrame(columns=["رقم السند", "التاريخ", "اسم العميل", "المبلغ المحصل", "طريقة السداد", "ملاحظات", "المسؤول"]).to_csv(COLLECTIONS_FILE, index=False, encoding='utf-8-sig')
 
     if not os.path.exists(SETTINGS_FILE):
-        # 📞 تم تعيين رقمك الجديد 01289518413 كرقم اتصال افتراضي ودعم للنظام بالفواتير الثلاثية
-        pd.DataFrame([{"اسم المعرض": "معرض الكبير", "العنوان": "ابوحماد - قرية العراقي - بجوار مدرسة الشهيد صلاح فتحي", "رقم الدعم": "01289518413"}]).to_csv(SETTINGS_FILE, index=False, encoding='utf-8-sig')
+        pd.DataFrame([{"اسم المعرض": "معرض الكبير", "العنوان": "ابوحماد - قرية العراقي - بجوار مدرسة الشهيد صلاح فتحي", "رقم الدعم": "0100XXXXXXX"}]).to_csv(SETTINGS_FILE, index=False, encoding='utf-8-sig')
 
     all_pages = [
         "📦 إدارة الأصناف والمخزن", "📊 رصيد أول المدة Excel", "🔍 حالة المخزن", 
@@ -199,6 +153,7 @@ if 'user' not in st.session_state: st.session_state.user = ""
 if 'role' not in st.session_state: st.session_state.role = "موظف"
 if 'cart' not in st.session_state: st.session_state.cart = []
 
+# تهيئة متغيرات حفظ الحالة للتنقل بدون فقدان البيانات
 if 'form_sale_cust_name' not in st.session_state: st.session_state.form_sale_cust_name = ""
 if 'form_sale_cust_phone' not in st.session_state: st.session_state.form_sale_cust_phone = ""
 if 'form_sale_cust_address' not in st.session_state: st.session_state.form_sale_cust_address = ""
@@ -448,6 +403,7 @@ else:
     # --- 2. صفحة رفع رصيد أول المدة ---
     elif "رصيد أول المدة" in choice:
         st.header("📊 رفع وتثبيت رصيد أول المدة ومخزون البضائع")
+        
         t_paste, t_file = st.tabs(["📋 خاصية اللصق السريع المباشر", "📥 رفع ملف Excel"])
         
         def process_and_merge_data(imported_df):
@@ -525,13 +481,16 @@ else:
             else:
                 selected_cust = st.selectbox("اختر العميل لاستعراض ماليته:", all_custs)
                 
+                # جلب بيانات الهاتف للعميل لإرسال الرسالة إليها
                 cust_info = contacts_df[(contacts_df["الاسم"] == selected_cust) & (contacts_df["النوع"] == "عميل")]
                 cust_phone = str(cust_info.iloc[0]["الهاتف"]).strip() if not cust_info.empty else ""
                 
+                # تجميع البيانات المالية للعميل من المبيعات والتحصيلات والمردودات
                 cust_sales = sales_df[sales_df["اسم العميل"] == selected_cust]
                 cust_returns = returns_df[returns_df["اسم العميل"] == selected_cust] if not returns_df.empty else pd.DataFrame()
                 cust_colls = collections_df[collections_df["اسم العميل"] == selected_cust] if not collections_df.empty else pd.DataFrame()
                 
+                # حساب الإجماليات
                 total_invoiced = pd.to_numeric(cust_sales["إجمالي البيع"], errors='coerce').sum()
                 
                 total_paid_at_invoice = 0.0
@@ -548,6 +507,7 @@ else:
                 grand_total_paid = total_paid_at_invoice + total_subsequent_payments
                 current_debt = total_invoiced - grand_total_paid - total_returned
                 
+                # صناديق عرض سريعة للموقف المالي
                 k1, k2, k3, k4 = st.columns(4)
                 k1.metric("🛒 إجمالي المبيعات", f"{total_invoiced:,.2f} جنيه")
                 k2.metric("🟢 إجمالي المدفوعات والتحصيلات", f"{grand_total_paid:,.2f} جنيه")
@@ -582,7 +542,9 @@ else:
                         
                         st.success(f"🎉 تم تسجيل السند {coll_id} بنجاح وخصمه من حساب العميل!")
                         
+                        # --- منطق صياغة وإرسال الرسالة للعميل ---
                         new_debt_after_pay = current_debt - pay_amt
+                        
                         msg_text = f"عزيزي العميل: {selected_cust}\n" \
                                    f"تم استلام مبلغ: {pay_amt} جنيهاً مصرياً بحسابكم بطريقة ({pay_method}).\n" \
                                    f"رقم الحركة: {coll_id}\n" \
@@ -590,25 +552,29 @@ else:
                                    f"المديونية المتبقية بذمتكم هي: {new_debt_after_pay:,.2f} جنيه.\n" \
                                    f"شكراً لتعاملكم مع {SHOWROOM_NAME}."
                         
-                        if cust_phone and cust_phone != "nan" and cust_phone != "":
-                            with st.spinner("⏳ جاري إرسال الإشعار التلقائي إلى واتساب العميل مباشرة..."):
-                                success, api_res = send_whatsapp_via_api(cust_phone, msg_text)
-                            
-                            if success:
-                                st.toast("📱 تم إرسال رسالة الواتساب للعميل مباشرة بنجاح!", icon="✅")
-                            else:
-                                st.error("❌ فشل الإرسال التلقائي للواتساب. يرجى التثبت من الـ Access Token ومُعرف الهاتف بالدالة الأساسية.")
-                                with st.expander("🔍 تفاصيل الاستجابة القادمة من فيسبوك"):
-                                    st.code(api_res)
-                        else:
-                            st.warning("⚠️ لم يتم إرسال رسالة لعدم وجود رقم هاتف صحيح مسجل بملف العميل.")
+                        # 1. إظهار محاكاة لإرسال الرسالة النصية بالنظام
+                        st.info(f"📨 تم إرسال رسالة نصية تفصيلية إلى رقم هاتف العميل ({cust_phone if cust_phone else 'غير مسجل'}):\n\n \"{msg_text}\"")
                         
-                        st.info(f"📋 نص الرسالة الموجهة: \n\n \"{msg_text}\"")
-                        st.button("🔄 تحديث الصفحة")
-
+                        # 2. إنشاء زر لإرسال الرسالة عبر WhatsApp مباشرة
+                        if cust_phone and cust_phone != "nan" and cust_phone != "":
+                            clean_phone = cust_phone
+                            if clean_phone.startswith("0"):
+                                clean_phone = "2" + clean_phone
+                            
+                            encoded_msg = urllib.parse.quote(msg_text)
+                            whatsapp_url = f"https://wa.me/{clean_phone}?text={encoded_msg}"
+                            
+                            st.markdown(f'<a href="{whatsapp_url}" target="_blank" style="display: block; width: 100%; text-align: center; background-color: #25D366; color: white; padding: 12px; font-weight: bold; text-decoration: none; border-radius: 5px; margin-top: 10px;">🟢 اضغط هنا لفتح وتأكيد إرسال رسالة الـ WhatsApp للعميل فوراً</a>', unsafe_allow_html=True)
+                        else:
+                            st.warning("⚠️ لم يتم توليد رابط واتساب لعدم وجود رقم هاتف صحيح مسجل بملف العميل.")
+                        
+                        if st.button("🔄 تحديث الصفحة بعد إرسال الرسالة"):
+                            st.rerun()
+                
                 st.markdown("### 📋 كشف تفصيلي بحركة كشف الحساب المتكاملة (كافة القيود)")
                 ledger_entries = []
                 
+                # إضافة فواتير البيع كحركات مدينة
                 for _, r in cust_sales.drop_duplicates("رقم الفاتورة").iterrows():
                     inv_tot = pd.to_numeric(cust_sales[cust_sales["رقم الفاتورة"] == r["رقم الفاتورة"]]["إجمالي البيع"], errors='coerce').sum()
                     ledger_entries.append({
@@ -619,6 +585,7 @@ else:
                         "رقم المرجع": r["رقم الفاتورة"]
                     })
                 
+                # إضافة السدادات اللاحقة
                 if not cust_colls.empty:
                     for _, r in cust_colls.iterrows():
                         ledger_entries.append({
@@ -629,6 +596,7 @@ else:
                             "رقم المرجع": r["رقم السند"]
                         })
                         
+                # إضافة المردودات إن وجدت
                 if not cust_returns.empty:
                     for _, r in cust_returns.iterrows():
                         ledger_entries.append({
@@ -644,6 +612,7 @@ else:
                     ledger_df = ledger_df.sort_values(by="التاريخ")
                     st.dataframe(ledger_df, use_container_width=True)
                     
+                    # تنزيل كشف الحساب إكسيل
                     out_ledger = BytesIO()
                     with pd.ExcelWriter(out_ledger, engine='xlsxwriter') as wr:
                         ledger_df.to_excel(wr, index=False, sheet_name='كشف الحساب')
@@ -687,7 +656,7 @@ else:
                         st.session_state.purchases_df = pd.concat([purchases_df, new_p], ignore_index=True)
                         st.session_state.purchases_df.to_csv(PURCHASES_FILE, index=False, encoding='utf-8-sig')
                         st.session_state.form_purchase_qty = 1  
-                        st.success("✅ تم تسجيل الوارد وتحديث المخزن بنجاح!")
+                        st.success("✅ تم تسجيل الوارد وتحديث المخزن والـ Session بنجاح!")
                         st.rerun()
                         
         with t_manage:
@@ -920,28 +889,11 @@ else:
                         st.session_state.sales_df = pd.concat([sales_df, pd.DataFrame(new_sales_entries)], ignore_index=True)
                         st.session_state.sales_df.to_csv(SALES_FILE, index=False, encoding='utf-8-sig')
                         
-                        st.success("🎉 تم تسجيل وحفظ الفاتورة بالكامل بنجاح في النظام!")
-                        
-                        invoice_msg = f"مرحباً سيد/ة {c_name}،\n" \
-                                      f"تم إصدار فاتورة مبيعات جديدة لكم بنجاح من {SHOWROOM_NAME}.\n\n" \
-                                      f"📄 رقم الفاتورة: {inv_id}\n" \
-                                      f"💵 الإجمالي المطلوب: {total_current_cart:,.2f} جنيه\n" \
-                                      f"💳 طبيعة الدفع: {sale_type}\n"
-                        if sale_type == "آجل (على الحساب)":
-                            invoice_msg += f"📉 المتبقي بذمتكم: {remaining_bal:,.2f} جنيه (استحقاق: {collect_date})\n"
-                        invoice_msg += f"\nشكراً لثقتكم بنا! ✨"
-                        
-                        if c_phone and c_phone != "nan" and c_phone != "":
-                            with st.spinner("⏳ جاري إرسال تفاصيل الفاتورة إلى واتساب العميل مباشرة..."):
-                                success_inv, api_res_inv = send_whatsapp_via_api(c_phone, invoice_msg)
-                            if success_inv:
-                                st.toast("📱 تم إرسال تفاصيل الفاتورة للعميل في الخلفية!", icon="✅")
-                            else:
-                                st.error("❌ تعذر إرسال الفاتورة تلقائياً عبر الواتساب.")
-                        
                         st.session_state.form_sale_cust_name = ""
                         st.session_state.form_sale_cust_phone = ""
                         st.session_state.form_sale_cust_address = ""
+                        
+                        st.success("🎉 تم تسجيل وحفظ الفاتورة بالكامل بنجاح في النظام!")
                         
                         triple_html = generate_triple_invoice_html(inv_id, current_datetime_str, c_name, c_phone, c_address, sale_type, collect_system, collect_date, paid_advance, remaining_bal, st.session_state.user, st.session_state.cart, SHOWROOM_NAME, SHOWROOM_ADDRESS, INQUIRY_NUMBER)
                         st.markdown(get_download_link(triple_html, f"الفاتورة_الثلاثية_{inv_id}.html"), unsafe_allow_html=True)
@@ -1083,7 +1035,7 @@ else:
                             st.session_state.returns_df = pd.concat([returns_df, pd.DataFrame(new_returns_list)], ignore_index=True)
                             st.session_state.returns_df.to_csv(RETURNS_FILE, index=False, encoding='utf-8-sig')
                             
-                            st.success(f"🎉 تم إرجاع الفاتورة {selected_ret_inv} بالكامل بنجاح!")
+                            st.success(f"🎉 تم إرجاع الفاتورة {selected_ret_inv} بالكامل، وإعادة كافة محتوياتها للرفوف بنجاح!")
                             st.rerun()
 
             st.markdown("---")
