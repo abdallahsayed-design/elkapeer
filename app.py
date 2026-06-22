@@ -6,6 +6,7 @@ import base64
 from io import BytesIO
 from io import StringIO
 import urllib.parse
+import requests  # تم إضافة مكتبة requests للتعامل مع الـ API المباشر
 
 # إعدادات الصفحة والشكل العام
 st.set_page_config(page_title="نظام معرض الكبير لإدارة المخازن المتطور", layout="wide")
@@ -22,6 +23,48 @@ PERMISSIONS_FILE = "permissions_config.csv"
 SETTINGS_FILE = "system_settings.csv"
 RETURNS_FILE = "returns_data.csv"  
 COLLECTIONS_FILE = "collections_data.csv" # ملف التحصيلات وسدادات الآجل
+
+# ==========================================
+# دالة إرسال رسائل الواتساب تلقائياً في الخلفية عبر Cloud API
+# ==========================================
+def send_whatsapp_via_api(phone, message):
+    """
+    دالة خلفية تقوم بإرسال الرسالة مباشرة عبر سيرفرات Meta (WhatsApp Business API)
+    بدون فتح أي روابط خارجية أو طلب تأكيد من المستخدم.
+    """
+    # ⚠️ قم بتغيير هذه القيم ببيانات حساب المطورين الخاص بك (Meta for Developers)
+    PHONE_NUMBER_ID = "YOUR_PHONE_NUMBER_ID"
+    ACCESS_TOKEN = "YOUR_ACCESS_TOKEN"
+    
+    url = f"https://graph.facebook.com/v17.0/{PHONE_NUMBER_ID}/messages"
+    
+    headers = {
+        "Authorization": f"Bearer {ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    # تجهيز الرقم برمز الدولة تلقائياً
+    clean_phone = str(phone).strip()
+    if clean_phone.startswith("0"):
+        clean_phone = "2" + clean_phone
+    elif not clean_phone.startswith("2") and len(clean_phone) == 10:
+        clean_phone = "20" + clean_phone
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": clean_phone,
+        "type": "text",
+        "text": {"body": message}
+    }
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        if response.status_code == 200:
+            return True, "تم الإرسال بنجاح"
+        else:
+            return False, response.text
+    except Exception as e:
+        return False, str(e)
 
 # دالة تحويل الأرقام إلى كلمات عربية (التفقيط)
 def number_to_arabic_words(number):
@@ -542,9 +585,8 @@ else:
                         
                         st.success(f"🎉 تم تسجيل السند {coll_id} بنجاح وخصمه من حساب العميل!")
                         
-                        # --- منطق صياغة وإرسال الرسالة للعميل ---
+                        # --- منطق صياغة وإرسال الرسالة للعميل تلقائياً في الخلفية ---
                         new_debt_after_pay = current_debt - pay_amt
-                        
                         msg_text = f"عزيزي العميل: {selected_cust}\n" \
                                    f"تم استلام مبلغ: {pay_amt} جنيهاً مصرياً بحسابكم بطريقة ({pay_method}).\n" \
                                    f"رقم الحركة: {coll_id}\n" \
@@ -552,25 +594,24 @@ else:
                                    f"المديونية المتبقية بذمتكم هي: {new_debt_after_pay:,.2f} جنيه.\n" \
                                    f"شكراً لتعاملكم مع {SHOWROOM_NAME}."
                         
-                        # 1. إظهار محاكاة لإرسال الرسالة النصية بالنظام
-                        st.info(f"📨 تم إرسال رسالة نصية تفصيلية إلى رقم هاتف العميل ({cust_phone if cust_phone else 'غير مسجل'}):\n\n \"{msg_text}\"")
-                        
-                        # 2. إنشاء زر لإرسال الرسالة عبر WhatsApp مباشرة
                         if cust_phone and cust_phone != "nan" and cust_phone != "":
-                            clean_phone = cust_phone
-                            if clean_phone.startswith("0"):
-                                clean_phone = "2" + clean_phone
+                            with st.spinner("⏳ جاري إرسال الإشعار التلقائي إلى واتساب العميل مباشرة..."):
+                                success, api_res = send_whatsapp_via_api(cust_phone, msg_text)
                             
-                            encoded_msg = urllib.parse.quote(msg_text)
-                            whatsapp_url = f"https://wa.me/{clean_phone}?text={encoded_msg}"
-                            
-                            st.markdown(f'<a href="{whatsapp_url}" target="_blank" style="display: block; width: 100%; text-align: center; background-color: #25D366; color: white; padding: 12px; font-weight: bold; text-decoration: none; border-radius: 5px; margin-top: 10px;">🟢 اضغط هنا لفتح وتأكيد إرسال رسالة الـ WhatsApp للعميل فوراً</a>', unsafe_allow_html=True)
+                            if success:
+                                st.toast("📱 تم إرسال رسالة الواتساب للعميل مباشرة بنجاح!", icon="✅")
+                            else:
+                                st.error("❌ فشل الإرسال التلقائي للواتساب. يرجى التحقق من إعدادات الـ API.")
+                                with st.expander("🔍 تفاصيل الخطأ للمطور"):
+                                    st.code(api_res)
                         else:
-                            st.warning("⚠️ لم يتم توليد رابط واتساب لعدم وجود رقم هاتف صحيح مسجل بملف العميل.")
+                            st.warning("⚠️ لم يتم إرسال رسالة لعدم وجود رقم هاتف صحيح مسجل بملف العميل.")
                         
-                        if st.button("🔄 تحديث الصفحة بعد إرسال الرسالة"):
-                            st.rerun()
-                
+                        # إظهار محاكاة نصية في جميع الأحوال للمراجعة
+                        st.info(f"📋 نص الرسالة: \n\n \"{msg_text}\"")
+                        
+                        st.button("🔄 تحديث الصفحة")
+
                 st.markdown("### 📋 كشف تفصيلي بحركة كشف الحساب المتكاملة (كافة القيود)")
                 ledger_entries = []
                 
@@ -889,11 +930,29 @@ else:
                         st.session_state.sales_df = pd.concat([sales_df, pd.DataFrame(new_sales_entries)], ignore_index=True)
                         st.session_state.sales_df.to_csv(SALES_FILE, index=False, encoding='utf-8-sig')
                         
+                        st.success("🎉 تم تسجيل وحفظ الفاتورة بالكامل بنجاح في النظام!")
+                        
+                        # --- أتمتة إرسال إشعار الفاتورة مباشرة للعميل عبر الواتساب في الخلفية ---
+                        invoice_msg = f"مرحباً سيد/ة {c_name}،\n" \
+                                      f"تم إصدار فاتورة مبيعات جديدة لكم بنجاح من {SHOWROOM_NAME}.\n\n" \
+                                      f"📄 رقم الفاتورة: {inv_id}\n" \
+                                      f"💵 الإجمالي المطلوب: {total_current_cart:,.2f} جنيه\n" \
+                                      f"💳 طبيعة الدفع: {sale_type}\n"
+                        if sale_type == "آجل (على الحساب)":
+                            invoice_msg += f"📉 المتبقي بذمتكم: {remaining_bal:,.2f} جنيه (استحقاق: {collect_date})\n"
+                        invoice_msg += f"\nشكراً لثقتكم بنا! ✨"
+                        
+                        if c_phone and c_phone != "nan" and c_phone != "":
+                            with st.spinner("⏳ جاري إرسال تفاصيل الفاتورة إلى واتساب العميل مباشرة..."):
+                                success_inv, api_res_inv = send_whatsapp_via_api(c_phone, invoice_msg)
+                            if success_inv:
+                                st.toast("📱 تم إرسال تفاصيل الفاتورة للعميل في الخلفية!", icon="✅")
+                            else:
+                                st.error("❌ تعذر إرسال الفاتورة تلقائياً عبر الواتساب.")
+                        
                         st.session_state.form_sale_cust_name = ""
                         st.session_state.form_sale_cust_phone = ""
                         st.session_state.form_sale_cust_address = ""
-                        
-                        st.success("🎉 تم تسجيل وحفظ الفاتورة بالكامل بنجاح في النظام!")
                         
                         triple_html = generate_triple_invoice_html(inv_id, current_datetime_str, c_name, c_phone, c_address, sale_type, collect_system, collect_date, paid_advance, remaining_bal, st.session_state.user, st.session_state.cart, SHOWROOM_NAME, SHOWROOM_ADDRESS, INQUIRY_NUMBER)
                         st.markdown(get_download_link(triple_html, f"الفاتورة_الثلاثية_{inv_id}.html"), unsafe_allow_html=True)
@@ -989,7 +1048,7 @@ else:
                         st.markdown("### ⚠️ إرجاع الفاتورة بكامل بنودها:")
                         total_refund_all = 0.0
                         for _, row in invoice_items.iterrows():
-                            u_p = float(row['سعر الوحدة'])
+                            u_p = float(row['sعر الوحدة'])
                             d_p = float(row['الخصم %'])
                             q_y = int(row['الكمية'])
                             total_refund_all += (q_y * u_p * (1 - (d_p / 100)))
