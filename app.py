@@ -5,11 +5,12 @@ from datetime import datetime
 import base64
 from io import BytesIO
 from io import StringIO
+import urllib.parse
 
 # إعدادات الصفحة والشكل العام
 st.set_page_config(page_title="نظام معرض الكبير لإدارة المخازن المتطور", layout="wide")
 
-# أسماء ملفات البيانات (CSV المعتمدة في مشروعك)
+# أسماء ملفات البيانات (CSV المعتمدة)
 INVENTORY_FILE = "inventory_data.csv"
 USERS_FILE = "users_data.csv"
 SALES_FILE = "sales_data.csv"
@@ -20,7 +21,7 @@ CONTACTS_FILE = "contacts_data.csv"
 PERMISSIONS_FILE = "permissions_config.csv"
 SETTINGS_FILE = "system_settings.csv"
 RETURNS_FILE = "returns_data.csv"  
-COLLECTIONS_FILE = "collections_data.csv" # ملف التحصيلات الجديد وسدادات الآجل
+COLLECTIONS_FILE = "collections_data.csv" # ملف التحصيلات وسدادات الآجل
 
 # دالة تحويل الأرقام إلى كلمات عربية (التفقيط)
 def number_to_arabic_words(number):
@@ -480,6 +481,10 @@ else:
             else:
                 selected_cust = st.selectbox("اختر العميل لاستعراض ماليته:", all_custs)
                 
+                # جلب بيانات الهاتف للعميل لإرسال الرسالة إليها
+                cust_info = contacts_df[(contacts_df["الاسم"] == selected_cust) & (contacts_df["النوع"] == "عميل")]
+                cust_phone = str(cust_info.iloc[0]["الهاتف"]).strip() if not cust_info.empty else ""
+                
                 # تجميع البيانات المالية للعميل من المبيعات والتحصيلات والمردودات
                 cust_sales = sales_df[sales_df["اسم العميل"] == selected_cust]
                 cust_returns = returns_df[returns_df["اسم العميل"] == selected_cust] if not returns_df.empty else pd.DataFrame()
@@ -488,7 +493,6 @@ else:
                 # حساب الإجماليات
                 total_invoiced = pd.to_numeric(cust_sales["إجمالي البيع"], errors='coerce').sum()
                 
-                # إجمالي المقدم المدفوع عند إصدار الفواتير الآجلة + الكاش الكامل
                 total_paid_at_invoice = 0.0
                 if not cust_sales.empty:
                     for _, s_row in cust_sales.drop_duplicates("رقم الفاتورة").iterrows():
@@ -522,9 +526,11 @@ else:
                         st.error("يرجى إدخال مبلغ تحصيل صحيح أكبر من الصفر.")
                     else:
                         coll_id = "REC-" + str(int(datetime.now().timestamp()))
+                        current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
                         new_coll = pd.DataFrame([{
                             "رقم السند": coll_id,
-                            "التاريخ": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "التاريخ": current_time_str,
                             "اسم العميل": selected_cust,
                             "المبلغ المحصل": pay_amt,
                             "طريقة السداد": pay_method,
@@ -533,13 +539,42 @@ else:
                         }])
                         st.session_state.collections_df = pd.concat([collections_df, new_coll], ignore_index=True)
                         st.session_state.collections_df.to_csv(COLLECTIONS_FILE, index=False, encoding='utf-8-sig')
-                        st.success(f"🎉 تم تسجيل السند {coll_id} بنجاح وخصمه من حساب العميل الحركي!")
-                        st.rerun()
+                        
+                        st.success(f"🎉 تم تسجيل السند {coll_id} بنجاح وخصمه من حساب العميل!")
+                        
+                        # --- منطق صياغة وإرسال الرسالة للعميل ---
+                        new_debt_after_pay = current_debt - pay_amt
+                        
+                        msg_text = f"عزيزي العميل: {selected_cust}\n" \
+                                   f"تم استلام مبلغ: {pay_amt} جنيهاً مصرياً بحسابكم بطريقة ({pay_method}).\n" \
+                                   f"رقم الحركة: {coll_id}\n" \
+                                   f"التاريخ: {current_time_str}\n" \
+                                   f"المديونية المتبقية بذمتكم هي: {new_debt_after_pay:,.2f} جنيه.\n" \
+                                   f"شكراً لتعاملكم مع {SHOWROOM_NAME}."
+                        
+                        # 1. إظهار محاكاة لإرسال الرسالة النصية بالنظام
+                        st.info(f"📨 تم إرسال رسالة نصية تفصيلية إلى رقم هاتف العميل ({cust_phone if cust_phone else 'غير مسجل'}):\n\n \"{msg_text}\"")
+                        
+                        # 2. إنشاء زر لإرسال الرسالة عبر WhatsApp مباشرة
+                        if cust_phone and cust_phone != "nan" and cust_phone != "":
+                            clean_phone = cust_phone
+                            if clean_phone.startswith("0"):
+                                clean_phone = "2" + clean_phone
+                            
+                            encoded_msg = urllib.parse.quote(msg_text)
+                            whatsapp_url = f"https://wa.me/{clean_phone}?text={encoded_msg}"
+                            
+                            st.markdown(f'<a href="{whatsapp_url}" target="_blank" style="display: block; width: 100%; text-align: center; background-color: #25D366; color: white; padding: 12px; font-weight: bold; text-decoration: none; border-radius: 5px; margin-top: 10px;">🟢 اضغط هنا لفتح وتأكيد إرسال رسالة الـ WhatsApp للعميل فوراً</a>', unsafe_allow_html=True)
+                        else:
+                            st.warning("⚠️ لم يتم توليد رابط واتساب لعدم وجود رقم هاتف صحيح مسجل بملف العميل.")
+                        
+                        if st.button("🔄 تحديث الصفحة بعد إرسال الرسالة"):
+                            st.rerun()
                 
                 st.markdown("### 📋 كشف تفصيلي بحركة كشف الحساب المتكاملة (كافة القيود)")
                 ledger_entries = []
                 
-                # إضافة فواتير البيع كحركات مدبنة
+                # إضافة فواتير البيع كحركات مدينة
                 for _, r in cust_sales.drop_duplicates("رقم الفاتورة").iterrows():
                     inv_tot = pd.to_numeric(cust_sales[cust_sales["رقم الفاتورة"] == r["رقم الفاتورة"]]["إجمالي البيع"], errors='coerce').sum()
                     ledger_entries.append({
