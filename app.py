@@ -30,13 +30,14 @@ COLLECTIONS_FILE = "collections_data.csv" # ملف التحصيلات وسداد
 def send_whatsapp_via_api(phone, message):
     """
     دالة خلفية تقوم بإرسال الرسالة مباشرة عبر سيرفرات Meta (WhatsApp Business API)
-    بدون فتح أي روابط خارجية أو طلب تأكيد من المستخدم.
+    بناءً على التحديث المباشر للـ Token والمعرف الرقمي.
     """
-    # ⚠️ قم بتغيير هذه القيم ببيانات حساب المطورين الخاص بك (Meta for Developers)
-    PHONE_NUMBER_ID = "YOUR_PHONE_NUMBER_ID"
-    ACCESS_TOKEN = "YOUR_ACCESS_TOKEN"
     
-    # تم التحديث إلى الإصدار المستقر v18.0
+    # 🔴 هام جداً: استبدل القيم أدناه بالبيانات الحقيقية من حساب مطوري فيسبوك Meta الخاصة بك:
+    PHONE_NUMBER_ID = "ضع_هنا_رقم_معرف_الهاتف_PHONE_NUMBER_ID"
+    ACCESS_TOKEN = "ضع_هنا_كود_الوصول_الدائم_ACCESS_TOKEN"
+    
+    # رابط الإرسال الرسمي بالإصدار v18.0
     url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
     
     headers = {
@@ -44,7 +45,7 @@ def send_whatsapp_via_api(phone, message):
         "Content-Type": "application/json"
     }
     
-    # تجهيز الرقم برمز الدولة تلقائياً
+    # تنظيف وتجهيز رقم الهاتف بصيغة دولية صحيحة ومقبولة لـ Meta
     clean_phone = str(phone).strip()
     if clean_phone.startswith("0"):
         clean_phone = "2" + clean_phone
@@ -142,7 +143,7 @@ def init_files():
         pd.DataFrame(columns=["رقم السند", "التاريخ", "اسم العميل", "المبلغ المحصل", "طريقة السداد", "ملاحظات", "المسؤول"]).to_csv(COLLECTIONS_FILE, index=False, encoding='utf-8-sig')
 
     if not os.path.exists(SETTINGS_FILE):
-        # 📞 تم إضافة رقمك الجديد 01289518413 كرقم الدعم والاتصال الأساسي في النظام
+        # 📞 تم تعيين رقمك الجديد 01289518413 كرقم اتصال افتراضي ودعم للنظام بالفواتير الثلاثية
         pd.DataFrame([{"اسم المعرض": "معرض الكبير", "العنوان": "ابوحماد - قرية العراقي - بجوار مدرسة الشهيد صلاح فتحي", "رقم الدعم": "01289518413"}]).to_csv(SETTINGS_FILE, index=False, encoding='utf-8-sig')
 
     all_pages = [
@@ -198,7 +199,6 @@ if 'user' not in st.session_state: st.session_state.user = ""
 if 'role' not in st.session_state: st.session_state.role = "موظف"
 if 'cart' not in st.session_state: st.session_state.cart = []
 
-# تهيئة متغيرات حفظ الحالة للتنقل بدون فقدان البيانات
 if 'form_sale_cust_name' not in st.session_state: st.session_state.form_sale_cust_name = ""
 if 'form_sale_cust_phone' not in st.session_state: st.session_state.form_sale_cust_phone = ""
 if 'form_sale_cust_address' not in st.session_state: st.session_state.form_sale_cust_address = ""
@@ -448,7 +448,6 @@ else:
     # --- 2. صفحة رفع رصيد أول المدة ---
     elif "رصيد أول المدة" in choice:
         st.header("📊 رفع وتثبيت رصيد أول المدة ومخزون البضائع")
-        
         t_paste, t_file = st.tabs(["📋 خاصية اللصق السريع المباشر", "📥 رفع ملف Excel"])
         
         def process_and_merge_data(imported_df):
@@ -526,16 +525,13 @@ else:
             else:
                 selected_cust = st.selectbox("اختر العميل لاستعراض ماليته:", all_custs)
                 
-                # جلب بيانات الهاتف للعميل لإرسال الرسالة إليها
                 cust_info = contacts_df[(contacts_df["الاسم"] == selected_cust) & (contacts_df["النوع"] == "عميل")]
                 cust_phone = str(cust_info.iloc[0]["الهاتف"]).strip() if not cust_info.empty else ""
                 
-                # تجميع البيانات المالية للعميل من المبيعات والتحصيلات والمردودات
                 cust_sales = sales_df[sales_df["اسم العميل"] == selected_cust]
                 cust_returns = returns_df[returns_df["اسم العميل"] == selected_cust] if not returns_df.empty else pd.DataFrame()
                 cust_colls = collections_df[collections_df["اسم العميل"] == selected_cust] if not collections_df.empty else pd.DataFrame()
                 
-                # حساب الإجماليات
                 total_invoiced = pd.to_numeric(cust_sales["إجمالي البيع"], errors='coerce').sum()
                 
                 total_paid_at_invoice = 0.0
@@ -552,7 +548,6 @@ else:
                 grand_total_paid = total_paid_at_invoice + total_subsequent_payments
                 current_debt = total_invoiced - grand_total_paid - total_returned
                 
-                # صناديق عرض سريعة للموقف المالي
                 k1, k2, k3, k4 = st.columns(4)
                 k1.metric("🛒 إجمالي المبيعات", f"{total_invoiced:,.2f} جنيه")
                 k2.metric("🟢 إجمالي المدفوعات والتحصيلات", f"{grand_total_paid:,.2f} جنيه")
@@ -587,7 +582,6 @@ else:
                         
                         st.success(f"🎉 تم تسجيل السند {coll_id} بنجاح وخصمه من حساب العميل!")
                         
-                        # --- منطق صياغة وإرسال الرسالة للعميل تلقائياً في الخلفية ---
                         new_debt_after_pay = current_debt - pay_amt
                         msg_text = f"عزيزي العميل: {selected_cust}\n" \
                                    f"تم استلام مبلغ: {pay_amt} جنيهاً مصرياً بحسابكم بطريقة ({pay_method}).\n" \
@@ -603,21 +597,18 @@ else:
                             if success:
                                 st.toast("📱 تم إرسال رسالة الواتساب للعميل مباشرة بنجاح!", icon="✅")
                             else:
-                                st.error("❌ فشل الإرسال التلقائي للواتساب. يرجى التحقق من إعدادات الـ API.")
-                                with st.expander("🔍 تفاصيل الخطأ للمطور"):
+                                st.error("❌ فشل الإرسال التلقائي للواتساب. يرجى التثبت من الـ Access Token ومُعرف الهاتف بالدالة الأساسية.")
+                                with st.expander("🔍 تفاصيل الاستجابة القادمة من فيسبوك"):
                                     st.code(api_res)
                         else:
                             st.warning("⚠️ لم يتم إرسال رسالة لعدم وجود رقم هاتف صحيح مسجل بملف العميل.")
                         
-                        # إظهار محاكاة نصية في جميع الأحوال للمراجعة
-                        st.info(f"📋 نص الرسالة: \n\n \"{msg_text}\"")
-                        
+                        st.info(f"📋 نص الرسالة الموجهة: \n\n \"{msg_text}\"")
                         st.button("🔄 تحديث الصفحة")
 
                 st.markdown("### 📋 كشف تفصيلي بحركة كشف الحساب المتكاملة (كافة القيود)")
                 ledger_entries = []
                 
-                # إضافة فواتير البيع كحركات مدينة
                 for _, r in cust_sales.drop_duplicates("رقم الفاتورة").iterrows():
                     inv_tot = pd.to_numeric(cust_sales[cust_sales["رقم الفاتورة"] == r["رقم الفاتورة"]]["إجمالي البيع"], errors='coerce').sum()
                     ledger_entries.append({
@@ -628,7 +619,6 @@ else:
                         "رقم المرجع": r["رقم الفاتورة"]
                     })
                 
-                # إضافة السدادات اللاحقة
                 if not cust_colls.empty:
                     for _, r in cust_colls.iterrows():
                         ledger_entries.append({
@@ -639,7 +629,6 @@ else:
                             "رقم المرجع": r["رقم السند"]
                         })
                         
-                # إضافة المردودات إن وجدت
                 if not cust_returns.empty:
                     for _, r in cust_returns.iterrows():
                         ledger_entries.append({
@@ -655,7 +644,6 @@ else:
                     ledger_df = ledger_df.sort_values(by="التاريخ")
                     st.dataframe(ledger_df, use_container_width=True)
                     
-                    # تنزيل كشف الحساب إكسيل
                     out_ledger = BytesIO()
                     with pd.ExcelWriter(out_ledger, engine='xlsxwriter') as wr:
                         ledger_df.to_excel(wr, index=False, sheet_name='كشف الحساب')
@@ -699,7 +687,7 @@ else:
                         st.session_state.purchases_df = pd.concat([purchases_df, new_p], ignore_index=True)
                         st.session_state.purchases_df.to_csv(PURCHASES_FILE, index=False, encoding='utf-8-sig')
                         st.session_state.form_purchase_qty = 1  
-                        st.success("✅ تم تسجيل الوارد وتحديث المخزن والـ Session بنجاح!")
+                        st.success("✅ تم تسجيل الوارد وتحديث المخزن بنجاح!")
                         st.rerun()
                         
         with t_manage:
@@ -934,7 +922,6 @@ else:
                         
                         st.success("🎉 تم تسجيل وحفظ الفاتورة بالكامل بنجاح في النظام!")
                         
-                        # --- أتمتة إرسال إشعار الفاتورة مباشرة للعميل عبر الواتساب في الخلفية ---
                         invoice_msg = f"مرحباً سيد/ة {c_name}،\n" \
                                       f"تم إصدار فاتورة مبيعات جديدة لكم بنجاح من {SHOWROOM_NAME}.\n\n" \
                                       f"📄 رقم الفاتورة: {inv_id}\n" \
@@ -1050,7 +1037,7 @@ else:
                         st.markdown("### ⚠️ إرجاع الفاتورة بكامل بنودها:")
                         total_refund_all = 0.0
                         for _, row in invoice_items.iterrows():
-                            u_p = float(row['sعر الوحدة'])
+                            u_p = float(row['سعر الوحدة'])
                             d_p = float(row['الخصم %'])
                             q_y = int(row['الكمية'])
                             total_refund_all += (q_y * u_p * (1 - (d_p / 100)))
@@ -1096,7 +1083,7 @@ else:
                             st.session_state.returns_df = pd.concat([returns_df, pd.DataFrame(new_returns_list)], ignore_index=True)
                             st.session_state.returns_df.to_csv(RETURNS_FILE, index=False, encoding='utf-8-sig')
                             
-                            st.success(f"🎉 تم إرجاع الفاتورة {selected_ret_inv} بالكامل، وإعادة كافة محتوياتها للرفوف بنجاح!")
+                            st.success(f"🎉 تم إرجاع الفاتورة {selected_ret_inv} بالكامل بنجاح!")
                             st.rerun()
 
             st.markdown("---")
