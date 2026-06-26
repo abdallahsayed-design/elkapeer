@@ -111,7 +111,7 @@ def init_files():
         default_perms = []
         for page in all_pages:
             default_perms.append({
-                 "اسم الصفحة": page, 
+                "اسم الصفحة": page, 
                 "مدير": True, 
                 "مشرف": True if page in ["🔍 حالة المخزن", "📥 حركة فواتير الشراء والتعديل", "📤 حركة فواتير البيع", "↩️ ارتجاع فواتير البيع", "🔎 البحث عن الفواتير وطباعتها", "⏰ الحضور والانصراف"] else False, 
                 "موظف": True if page in ["🔍 حالة المخزن", "📤 حركة فواتير البيع", "↩️ ارتجاع فواتير البيع", "🔎 البحث عن الفواتير وطباعتها", "⏰ الحضور والانصراف"] else False
@@ -191,39 +191,29 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
     html_content = f"""
     <div class="triple-print-wrapper">
         <style>
-            @page {{ size: A5 portrait; margin: 0; }}
             @media print {{
                 body {{ direction: rtl; background: #fff; color: #000; padding: 0; margin: 0; }}
                 header, [data-testid="stSidebar"], [data-testid="stHeader"], .no-print-zone, .stButton, .download-btn-area {{ display: none !important; }}
                 .invoice-page {{ 
-                    width: 148mm; 
+                    width: 100% !important;
+                    max-width: 100% !important;
                     height: auto !important; 
-                    min-height: 210mm; 
-                    box-sizing: border-box; 
-                    padding: 10mm !important; 
-                    margin: 0 !important; 
-                    page-break-after: always; 
-                    border: none !important; 
-                    box-shadow: none !important; 
-                }}
-                .invoice-items-table tr {{
-                    page-break-inside: avoid !important;
-                    page-break-after: auto !important;
+                    page-break-after: always !important; 
+                    border: 1px solid #000 !important;
+                    margin-bottom: 30px !important;
+                    padding: 15px !important;
+                    box-shadow: none !important;
                 }}
             }}
             .triple-print-wrapper {{ direction: rtl; text-align: right; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }}
             .invoice-page {{ 
-                width: 148mm; 
-                height: auto;
-                min-height: 210mm;
-                max-width: 100%; 
+                max-width: 800px; 
                 border: 2px solid #000; 
                 padding: 20px; 
                 margin: 20px auto; 
                 background: #fff; 
                 color: #000; 
                 box-sizing: border-box; 
-                page-break-after: always; 
             }}
             .invoice-header {{ text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px; }}
             .invoice-header h3 {{ margin: 0; background: #000; color: #fff; padding: 4px 12px; display: inline-block; font-size: 14px; border-radius: 4px; }}
@@ -240,7 +230,7 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
         </style>
         
         <div class="no-print-zone" style="text-align:center; margin-bottom:20px;">
-            <button class="print-trigger-btn" onclick="window.print()">🖨️ إصدار وطباعة الفاتورة الثلاثية فوراً (A5)</button>
+            <button class="print-trigger-btn" onclick="window.print()">🖨️ إصدار وطباعة الفاتورة الثلاثية فوراً</button>
         </div>
 
         <div class="invoice-page">
@@ -517,7 +507,7 @@ else:
             else:
                 selected_cust = st.selectbox("اختر العميل لاستعراض ماليته:", all_custs)
                 cust_info = contacts_df[(contacts_df["الاسم"] == selected_cust) & (contacts_df["النوع"] == "عميل")]
-                cust_phone = str(cust_info.iloc[0]["الهاتف"]).strip() if not cust_info.empty else ""
+                cust_phone = str(cust_info.iloc[0]["Hesabe"]).strip() if not cust_info.empty and "Hesabe" in cust_info.columns else (str(cust_info.iloc[0]["الهاتف"]).strip() if not cust_info.empty else "")
                 cust_sales = sales_df[sales_df["اسم العميل"] == selected_cust]
                 cust_returns = returns_df[returns_df["اسم العميل"] == selected_cust] if not returns_df.empty else pd.DataFrame()
                 cust_colls = collections_df[collections_df["اسم العميل"] == selected_cust] if not collections_df.empty else pd.DataFrame()
@@ -559,8 +549,8 @@ else:
                         msg_text = f"عزيزي العميل: {selected_cust}\nتم استلام مبلغ: {pay_amt} جنيهاً مصرياً بحسابكم بطريقة ({pay_method}).\nرقم الحركة: {coll_id}\nالتاريخ: {current_time_str}\nالمديونية المتبقية بذمتكم هي: {new_debt_after_pay:,.2f} جنيه.\nشكراً لتعاملكم مع {SHOWROOM_NAME}."
                         st.info(f"📨 تم إرسال رسالة نصية تفصيلية إلى رقم هاتف العميل ({cust_phone if cust_phone else 'غير مسجل'}):\n\n \"{msg_text}\"")
 
-    # --- 5. حركة فواتير الشراء والتعديل والارتجاع حركياً المطور ---
-    elif "حركة فواتير الشراء والتعديل" in choice:
+    # --- 5. حركة فواتير الشراء والتعديل والارتجاع (تمت المطابقة هنا للظهور السليم) ---
+    elif "📥 حركة فواتير الشراء والتعديل" in choice:
         st.header("📥 حركات فواتير الشراء وتغذية المخزون بالبضائع")
         
         tab_p_add, tab_p_edit_remove = st.tabs(["➕ تسجيل فاتورة شراء جديدة", "🎛️ لوحة تحكم وتعديل وارتجاع فواتير الشراء"])
@@ -618,9 +608,8 @@ else:
             if purchases_df.empty:
                 st.info("لا توجد فواتير شراء مسجلة.")
             else:
-                st.write("💡 يمكنك تعديل الحقول مباشرة من الجدول التفاعلي أدناه واضغط حفظ. (تنبيه: التعديل من الجدول لا يؤثر على المخزون بشكل حركي، لتعديل المخزون استخدم الأزرار التفاعلية بالأسفل)")
+                st.write("💡 يمكنك تعديل الحقول مباشرة من الجدول التفاعلي أدناه واضغط حفظ.")
                 
-                # عرض محرر البيانات التفاعلي لفواتير الشراء
                 edited_purchases = st.data_editor(purchases_df, num_rows="dynamic", use_container_width=True, key="purchases_interactive_editor")
                 if st.button("💾 حفظ تعديلات جدول المشتريات العامة"):
                     edited_purchases.to_csv(PURCHASES_FILE, index=False, encoding='utf-8-sig')
@@ -631,7 +620,6 @@ else:
                 st.markdown("---")
                 st.subheader("↩️ إجراء حركة ارتجاع بضاعة لمورد أو حذف بند شراء معين وضبط المخزن تلقائياً")
                 
-                # آلية ذكية لاختيار فاتورة الشراء وتعديلها أو ارتجاع كمياتها مع التأثير المباشر واللحظي على جرد المخزن
                 p_select_inv = st.selectbox("اختر رقم الفاتورة لإجراء تعديل حركي / ارتجاع:", purchases_df["رقم الفاتورة"].unique())
                 matching_p_rows = purchases_df[purchases_df["رقم الفاتورة"] == p_select_inv]
                 
@@ -646,12 +634,10 @@ else:
                     qty_to_return_supplier = c_act1.number_input("الكمية المراد ارتجاعها للمورد (سيتم خصمها من المخزن الحالي):", min_value=1, max_value=max_ret_qty, value=1, step=1)
                     
                     if c_act2.button("🔥 تنفيذ ارتجاع البضاعة للمورد وتعديل الأرصدة الحالية", use_container_width=True):
-                        # 1. تحديث كمية الصنف في ملف المشتريات
                         p_idx = purchases_df[(purchases_df["رقم الفاتورة"] == p_select_inv) & (purchases_df["كود الصنف"] == p_row_to_mod)].index[0]
                         new_p_qty = max_ret_qty - qty_to_return_supplier
                         
                         if new_p_qty == 0:
-                            # إذا تم ارتجاع كامل الكمية نقوم بحذف السطر
                             st.session_state.purchases_df = purchases_df.drop(p_idx)
                         else:
                             st.session_state.purchases_df.at[p_idx, "الكمية"] = new_p_qty
@@ -659,17 +645,16 @@ else:
                             
                         st.session_state.purchases_df.to_csv(PURCHASES_FILE, index=False, encoding='utf-8-sig')
                         
-                        # 2. خصم الكمية المرتجعة من جرد المخزن
                         if p_row_to_mod in st.session_state.inv_df["كود الصنف"].values:
                             inv_idx = st.session_state.inv_df[st.session_state.inv_df["كود الصنف"] == p_row_to_mod].index[0]
                             st.session_state.inv_df.at[inv_idx, "الكمية"] = max(0, int(st.session_state.inv_df.at[inv_idx, "الكمية"]) - qty_to_return_supplier)
                             st.session_state.inv_df.to_csv(INVENTORY_FILE, index=False, encoding='utf-8-sig')
                             
-                        st.success("✅ تم تنفيذ عملية الارتجاع بنجاح وخصم الكميات من المخازن وتعديل حسابات التكلفة الفاتورة!")
+                        st.success("✅ تم تنفيذ عملية الارتجاع بنجاح وخصم الكميات من المخازن وتعديل حسابات التكلفة!")
                         st.rerun()
 
-    # --- 6. صفحة حركة فواتير البيع المتطورة (عميل مكود وسريع + حذف أصناف البث الحي) ---
-    elif "حركة فواتير البيع" in choice:
+    # --- 6. صفحة حركة فواتير البيع المتطورة ---
+    elif "📤 حركة فواتير البيع" in choice:
         st.header("📤 لوحة حركة فواتير البيع وإصدار الفواتير المتطورة")
         
         st.markdown("### 👤 بيانات العميل ونظام البيع")
@@ -682,7 +667,6 @@ else:
         
         if cust_type_select == "عميل سريع (كاش)":
             c1, c2, c3 = st.columns(3)
-            # الاحتفاظ بالبيانات المدخلة في الـ Session State لمنع الفقدان عند التنقل
             sale_cust = c1.text_input("اسم العميل السريع", value=st.session_state.form_sale_cust_name)
             sale_phone = c2.text_input("رقم الهاتف (اختياري)", value=st.session_state.form_sale_cust_phone)
             sale_address = c3.text_input("العنوان (اختياري)", value=st.session_state.form_sale_cust_address)
@@ -693,7 +677,7 @@ else:
         else:
             all_saved_customers = contacts_df[contacts_df["النوع"] == "عميل"]["الاسم"].unique() if not contacts_df.empty else []
             if len(all_saved_customers) == 0:
-                st.warning("⚠️ لا توجد كروت عملاء مكودة بالنظام! يرجى تكويد عملاء من صفحة 'العملاء والموردين'. تم تحويلك للعميل السريع تلقائياً.")
+                st.warning("⚠️ لا توجد كروت عملاء مكودة للنظام! يرجى تكويد عملاء من صفحة 'العملاء والموردين'. تم تحويلك للعميل السريع تلقائياً.")
                 sale_cust = st.text_input("اسم العميل", value=st.session_state.form_sale_cust_name)
                 st.session_state.form_sale_cust_name = sale_cust
             else:
@@ -739,9 +723,7 @@ else:
                     
         if st.session_state.cart:
             st.markdown("### 🧾 معاينة الأصناف المدرجة بالسلة وإدارة الحذف:")
-            cart_df = pd.DataFrame(st.session_state.cart)
             
-            # آلية تفاعلية جديدة تتيح للمستخدم إمكانية حذف بند معين فوراً من السلة المباشرة قبل ترحيل الفاتورة
             for i, item in enumerate(st.session_state.cart):
                 cols_cart_control = st.columns([5, 2, 2, 2])
                 cols_cart_control[0].write(f"📦 **{item['item_name']}** ({item['item_code']})")
@@ -771,7 +753,7 @@ else:
             st.markdown("### 🛡️ تحديد شروط ونظام السداد المالي")
             pay_type = st.radio("نوع عملية البيع والفاتورة", ["نقدي (كاش)", "آجل (على الحساب)"], horizontal=True)
             
-            collect_system = "غير محدد"
+            collect_system = "غير مححدد"
             collect_date = "غير محدد"
             paid_advance = 0.0
             remaining_bal = 0.0
@@ -823,41 +805,31 @@ else:
                     st.markdown(html_invoice, unsafe_allow_html=True)
                     st.markdown(get_download_link(html_invoice, f"Invoice_{inv_id}.html"), unsafe_allow_html=True)
                     
-                    # تصفير المدخلات والسلة بعد النجاح
                     st.session_state.cart = []
                     st.session_state.form_sale_cust_name = ""
                     st.session_state.form_sale_cust_phone = ""
                     st.session_state.form_sale_cust_address = ""
                     st.rerun()
 
-    # --- 7. صفحة ارتجاع فواتير البيع التفاعلية الكاملة ---
-    elif "ارتجاع فواتير البيع" in choice:
+    # --- 7. صفحة ارتجاع فواتير البيع ---
+    elif "↩️ ارتجاع فواتير البيع" in choice:
         st.header("↩️ إدارة لوحة ارتجاع وتعديل الأصناف المرتجعة للعملاء")
         
         t_manage_returns, t_add_return = st.tabs(["🎛️ لوحة تحكم المردودات والارتجاع (تعديل وحذف)", "➕ تسجيل بند إرجاع جديد"])
         
         with t_manage_returns:
-            st.subheader("📝 جدول تفاعلي لتعديل أو حذف بيانات الارتجاع وضبط أسعار الشراء والبيع")
+            st.subheader("📝 جدول تفاعلي لتعديل أو حذف بيانات الارتجاع")
             if returns_df.empty:
                 st.info("لا توجد بيانات حركات ارتجاع مسجلة حالياً.")
             else:
-                st.write("💡 يمكنك تعديل أي خانة (الأسعار، الكميات، الأرقام) بالضغط عليها مرتين مباشرة، أو حذف أي سطر بتحديده ثم الضغط على زر الحذف في الكيبورد أو جدول النظام.")
-                
-                edited_returns = st.data_editor(
-                    returns_df, 
-                    num_rows="dynamic",  
-                    use_container_width=True,
-                    key="returns_main_interactive_editor"
-                )
-                
+                edited_returns = st.data_editor(returns_df, num_rows="dynamic", use_container_width=True, key="returns_main_interactive_editor")
                 if st.button("💾 حفظ جميع التعديلات وتحديث سجلات النظام"):
                     try:
                         edited_returns.to_csv(RETURNS_FILE, index=False, encoding='utf-8-sig')
                         st.session_state.returns_df = edited_returns
-                        st.success("🚀 تم تحديث وحفظ سجلات الارتجاع والأسعار المعدلة في الملفات بنجاح!")
+                        st.success("🚀 تم تحديث وحفظ سجلات الارتجاع والأسعار المعدلة!")
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"حدث خطأ أثناء الحفظ والتعديل: {e}")
+                    except Exception as e: st.error(f"حدث خطأ أثناء الحفظ: {e}")
                     
         with t_add_return:
             st.subheader("➕ إضافة بند ارتجاع جديد يدوياً إلى النظام")
@@ -868,10 +840,8 @@ else:
                 cust_name = rc3.text_input("اسم العميل")
                 
                 rc4, rc5, rc6 = st.columns(3)
-                if inv_df.empty:
-                    item_code = rc4.text_input("كود الصنف")
-                else:
-                    item_code = rc4.selectbox("اختر الصنف المراد إرجاعه", inv_df["كود الصنف"].values, format_func=safe_item_format)
+                if inv_df.empty: item_code = rc4.text_input("كود الصنف")
+                else: item_code = rc4.selectbox("اختر الصنف المراد إرجاعه", inv_df["كود الصنف"].values, format_func=safe_item_format)
                 
                 ret_qty = rc5.number_input("الكمية المرجعة", min_value=1, step=1, value=1)
                 ret_amount = rc6.number_input("المبلغ المردود للعميل (جنيه)", min_value=0.0, step=10.0, value=0.0)
@@ -883,15 +853,10 @@ else:
                         item_name = match_item.iloc[0]['اسم الصنف'] if not match_item.empty else "صنف غير معروف"
                         
                         new_return_row = pd.DataFrame([{
-                            "رقم الإرجاع": str(ret_id),
-                            "رقم الفاتورة الأصلية": str(invoice_ref),
-                            "التاريخ": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            "اسم العميل": str(cust_name),
-                            "كود الصنف": str(item_code),
-                            "الصنف": str(item_name),
-                            "الكمية المرجعة": int(ret_qty),
-                            "المبلغ المردود": float(ret_amount),
-                            "المسؤول": st.session_state.user
+                            "رقم الإرجاع": str(ret_id), "رقم الفاتورة الأصلية": str(invoice_ref),
+                            "التاريخ": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "اسم العميل": str(cust_name),
+                            "كود الصنف": str(item_code), "الصنف": str(item_name), "الكمية المرجعة": int(ret_qty),
+                            "المبلغ المردود": float(ret_amount), "المسؤول": st.session_state.user
                         }])
                         
                         updated_returns_df = pd.concat([st.session_state.returns_df, new_return_row], ignore_index=True)
@@ -903,13 +868,11 @@ else:
                             st.session_state.inv_df.at[idx, "الكمية"] += int(ret_qty)
                             st.session_state.inv_df.to_csv(INVENTORY_FILE, index=False, encoding='utf-8-sig')
                         
-                        st.success("🎉 تم تسجيل حركة وبند الارتجاع بنجاح، وإعادة السلع للمخازن وتعديل الأرصدة المالية!")
+                        st.success("🎉 تم تسجيل بند الارتجاع بنجاح وضبط الكميات!")
                         st.rerun()
-                    else:
-                        st.error("⚠️ يرجى ملء الحقول الأساسية (اسم العميل، رقم الفاتورة الأصلية، والصنف) لإتمام الحركة.")
 
     # --- 8. البحث عن الفواتير وطباعتها ---
-    elif "البحث عن الفواتير وطباعتها" in choice:
+    elif "🔎 البحث عن الفواتير وطباعتها" in choice:
         st.header("🔎 محرك البحث عن الفواتير السريع وطباعتها")
         if sales_df.empty: st.info("لم يتم إصدار فواتير بيع بعد.")
         else:
@@ -918,7 +881,7 @@ else:
                 f_sales = sales_df[sales_df["رقم الفاتورة"] == search_id]
                 if f_sales.empty: st.error("❌ لم يتم العثور على أي فاتورة تطابق هذا الرقم.")
                 else:
-                    st.success("🔍 تم العثور على الفاتورة بنجاح! تفاصيل البيانات:")
+                    st.success("🔍 تم العثور على الفاتورة بنجاح!")
                     f_head = f_sales.iloc[0]
                     
                     st.write(f"**اسم العميل:** {f_head['اسم العميل']} | **التاريخ:** {f_head['التاريخ']} | **نوع الدفع:** {f_head['نوع البيع']}")
@@ -937,7 +900,7 @@ else:
                     st.markdown(html_invoice, unsafe_allow_html=True)
 
     # --- 9. تقارير البيع والشراء والأرباح ---
-    elif "تقارير البيع والشراء والأرباح" in choice:
+    elif "📈 تقارير البيع والشراء والأرباح" in choice:
         st.header("📈 لوحة التقارير الذكية والإحصائيات والأرباح العامة")
         
         total_s_income = pd.to_numeric(sales_df["إجمالي البيع"], errors='coerce').sum() if not sales_df.empty else 0.0
@@ -954,12 +917,12 @@ else:
         m4.metric("📊 صافي الأرباح النهائية للمحل", f"{final_net_profit:,.2f} جنيه")
 
     # --- 10. المصاريف ---
-    elif "المصاريف" in choice:
+    elif "💸 المصاريف" in choice:
         st.header("💸 سجل إدارة المصاريف النثرية والعمومية")
         st.dataframe(exp_df, use_container_width=True)
         with st.form("exp_form"):
             ex1, ex2 = st.columns(2)
-            e_desc = ex1.text_input("بيان وجدول المصروف")
+            e_desc = ex1.text_input("بيان المصروف")
             e_amt = ex2.number_input("المبلغ المدفوع (جنيه)", min_value=0.0, step=10.0)
             if st.form_submit_button("💾 ترحيل المصروف المالي"):
                 if e_desc and e_amt > 0:
@@ -970,7 +933,7 @@ else:
                     st.rerun()
 
     # --- 11. الحضور والانصراف ---
-    elif "الحضور والانصراف" in choice:
+    elif "⏰ الحضور والانصراف" in choice:
         st.header("⏰ دفتر تسجيل حضور وانصراف الموظفين الحركي")
         st.dataframe(att_df, use_container_width=True)
         ac1, ac2 = st.columns(2)
@@ -989,11 +952,11 @@ else:
                 idx = match_att.index[-1]
                 st.session_state.att_df.at[idx, "وقت الانصراف"] = datetime.now().strftime("%H:%M:%S")
                 st.session_state.att_df.to_csv(ATTENDANCE_FILE, index=False, encoding='utf-8-sig')
-                st.success("✅ تم تسجيل وقت انصرافك بنجاح! رافقتكم السلامة.")
+                st.success("✅ تم تسجيل وقت انصرافك بنجاح!")
                 st.rerun()
 
     # --- 12. إدارة وتعديل الصلاحيات والحسابات ---
-    elif "إدارة وتعديل الصلاحيات والحسابات" in choice:
+    elif "⚙️ إدارة وتعديل الصلاحيات والحسابات" in choice:
         st.header("⚙️ لوحة التحكم بصلاحيات المستخدمين وعناوين الصفحات")
         tab_users, tab_roles = st.tabs(["👥 حسابات الموظفين", "🔑 صلاحيات المجموعات"])
         
@@ -1009,7 +972,7 @@ else:
                     if new_u and new_p:
                         u_updated = pd.concat([u_manage, pd.DataFrame([{"username": new_u, "password": new_p, "role": new_r}])], ignore_index=True)
                         u_updated.to_csv(USERS_FILE, index=False, encoding='utf-8-sig')
-                        st.success("🚀 تم إضافة المستخدم الجديد للحسابات!")
+                        st.success("🚀 تم إضافة المستخدم الجديد لحسابات!")
                         st.rerun()
                         
         with tab_roles:
@@ -1021,7 +984,7 @@ else:
                 st.rerun()
 
     # --- 13. صفحة إعدادات بيانات الفاتورة والدعم ---
-    elif "إعدادات بيانات الفاتورة والدعم" in choice:
+    elif "⚙️ إعدادات بيانات الفاتورة والدعم" in choice:
         st.header("⚙️ تحديث وإعداد بيانات طباعة الفاتورة والدعم")
         with st.form("settings_form_updated"):
             new_showroom_name = st.text_input("اسم المعرض / الشركة بالفاتورة", value=SHOWROOM_NAME)
