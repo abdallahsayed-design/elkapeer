@@ -650,19 +650,24 @@ else:
                 
                 cust_data_row = contacts_df[(contacts_df["الاسم"] == selected_c_name) & (contacts_df["النوع"] == "عميل")].iloc[0]
                 sale_cust = str(selected_c_name)
-                sale_phone = str(cust_data_row["الهاتف"])
+                sale_phone = str(cust_data_row["Hands_phone"] if "Hands_phone" in cust_data_row else cust_data_row["الهاتف"])
                 sale_address = str(cust_data_row["العنوان"])
                 st.info(f"🟢 العميل: {sale_cust} | الهاتف: {sale_phone} | العنوان: {sale_address}")
         
         st.markdown("### 🛒 اختيار المنتجات وإضافتها للسلة")
-        sc1, sc2, sc3 = st.columns(3)
+        sc1, sc2, sc3, sc4 = st.columns(4)
         if inv_df.empty: sc1.info("المخزن فارغ.")
         else:
             selected_sale_code = sc1.selectbox("اختر الصنف للبيع", inv_df["كود الصنف"].values, format_func=safe_item_format)
             match_s = inv_df[inv_df["كود الصنف"] == selected_sale_code].iloc[0]
             
             sale_qty = sc2.number_input(f"الكمية المطلوبة (المتاحة: {match_s['الكمية']})", min_value=1, max_value=int(match_s['الكمية']) if int(match_s['الكمية']) > 0 else 1, step=1)
-            sale_disc = sc3.number_input("نسبة الخصم للبند %", min_value=0.0, max_value=100.0, step=1.0, value=0.0)
+            
+            # بند سعر الشراء القابل للتعديل
+            default_purchase_cost = float(match_s['سعر الشراء']) if 'سعر الشراء' in match_s else 0.0
+            custom_purchase_cost = sc3.number_input("سعر الشراء المعتمد للبند", value=default_purchase_cost, min_value=0.0, step=1.0)
+            
+            sale_disc = sc4.number_input("نسبة الخصم للبند %", min_value=0.0, max_value=100.0, step=1.0, value=0.0)
             
             if st.button("➕ إضافة المنتج المختار إلى سلة الفاتورة الحالية"):
                 if match_s['الكمية'] <= 0: st.error("⚠️ عذراً رصيد هذا الصنف صفر بالمخزن حالياً!")
@@ -676,7 +681,7 @@ else:
                         "category": match_s['تصنيف الصنف'], "unit": match_s['نوع الوحدة'],
                         "warehouse_loc": match_s['موقع المخزن'], "qty": int(sale_qty),
                         "price": float(final_u_p), "discount": float(sale_disc),
-                        "final_total": float(final_tot_p), "purchase_cost": float(match_s['سعر الشراء'])
+                        "final_total": float(final_tot_p), "purchase_cost": float(custom_purchase_cost)
                     })
                     st.success(f"تم إضافة {match_s['اسم الصنف']} بنجاح بالسلة!")
                     st.rerun()
@@ -860,7 +865,6 @@ else:
                         first_row['المتبقي'], first_row['المسؤول'], re_cart, SHOWROOM_NAME, SHOWROOM_ADDRESS, INQUIRY_NUMBER, cash_discount_val
                     )
                     st.components.v1.html(invoice_html, height=1400, scrolling=True)
-
 
     # --- 9. تقارير البيع والشراء والأرباح ---
     elif "📈 تقارير البيع والشراء والأرباح" in choice:
