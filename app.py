@@ -77,7 +77,7 @@ def init_files():
         pd.DataFrame(columns=["كود الصنف", "اسم الصنف", "تصنيف الصنف", "نوع الوحدة", "موقع المخزن", "الكمية", "سعر الشراء", "سعر البيع"]).to_csv(INVENTORY_FILE, index=False, encoding='utf-8-sig')
         
     if not os.path.exists(SALES_FILE):
-        pd.DataFrame(columns=["رقم الفاتورة", "التاريخ", "اسم العميل", "هاتف العميل", "العنوان", "نوع البيع", "نظام التحصيل", "تاريخ التحصيل", "المدفوع مقدم", "المتبقي", "كود الصنف", "الصنف", "تصنيف الصنف", "نوع الوحدة", "موقع المخزن", "الكمية", "سعر الوحدة", "الخصم %", "إجمالي البيع", "تكلفة الشراء الإجمالية", "صافي ربح الفاتورة", "المسؤول"]).to_csv(SALES_FILE, index=False, encoding='utf-8-sig')
+        pd.DataFrame(columns=["رقم الفاتورة", "التاريخ", "اسم العميل", "هاتف العميل", "العنوان", "نوع البيع", "نظام التحصيل", "تاريخ التحصيل", "المدفوع مقدم", "المتبقي", "كود الصنف", "الصنف", "تصنيف الصنف", "نوع الوحدة", "موقع المخزن", "الكمية", "سعر الوحدة", "الخصم %", "إجمالي البيع", "تكلفة الشراء الإجمالية", "صافي ربح الفاتورة", "المسؤول", "الخصم النقدي"]).to_csv(SALES_FILE, index=False, encoding='utf-8-sig')
         
     if not os.path.exists(RETURNS_FILE):
         pd.DataFrame(columns=["رقم الإرجاع", "رقم الفاتورة الأصلية", "التاريخ", "اسم العميل", "كود الصنف", "الصنف", "الكمية المرجعة", "المبلغ المردود", "المسؤول"]).to_csv(RETURNS_FILE, index=False, encoding='utf-8-sig')
@@ -133,6 +133,9 @@ def load_data_into_session():
         st.session_state.inv_df["سعر البيع"] = pd.to_numeric(st.session_state.inv_df["سعر البيع"], errors='coerce').fillna(0.0)
 
         st.session_state.sales_df = pd.read_csv(SALES_FILE, dtype={"رقم الفاتورة": str, "كود الصنف": str})
+        if "الخصم النقدي" not in st.session_state.sales_df.columns:
+            st.session_state.sales_df["الخصم النقدي"] = 0.0
+            
         st.session_state.returns_df = pd.read_csv(RETURNS_FILE, dtype={"رقم الإرجاع": str, "رقم الفاتورة الأصلية": str, "كود الصنف": str})
         st.session_state.purchases_df = pd.read_csv(PURCHASES_FILE, dtype={"رقم الفاتورة": str, "كود الصنف": str})
         st.session_state.exp_df = pd.read_csv(EXPENSES_FILE)
@@ -153,14 +156,13 @@ if 'user' not in st.session_state: st.session_state.user = ""
 if 'role' not in st.session_state: st.session_state.role = "موظف"
 if 'cart' not in st.session_state: st.session_state.cart = []
 
-# تهيئة متغيرات حفظ الحالة للتنقل بدون فقدان البيانات
 if 'form_sale_cust_name' not in st.session_state: st.session_state.form_sale_cust_name = ""
 if 'form_sale_cust_phone' not in st.session_state: st.session_state.form_sale_cust_phone = ""
 if 'form_sale_cust_address' not in st.session_state: st.session_state.form_sale_cust_address = ""
 if 'form_purchase_qty' not in st.session_state: st.session_state.form_purchase_qty = 1
 
-# تم تحديث الدالة لمنع تداخل الصفحات في الطباعة نهائياً
-def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, address, pay_type, collect_system, collect_date, paid_advance, remaining_bal, user, cart_items, sh_name, sh_address, sh_phone):
+# تحديث دالة الطباعة بالـ CSS الجديد لمعالجة مشكلة التداخل وضبط الخصم بالجنيه
+def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, address, pay_type, collect_system, collect_date, paid_advance, remaining_bal, user, cart_items, sh_name, sh_address, sh_phone, cash_discount=0.0):
     collect_info = ""
     if pay_type == "آجل (على الحساب)":
         collect_info = f"""
@@ -168,42 +170,48 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
         <tr><td><b>المدفوع مقدماً:</b> <span style='color:green; font-weight:bold;'>{paid_advance} جنيه</span></td><td><b>المتبقي بالذمة (آجل):</b> <span style='color:red; font-weight:bold;'>{remaining_bal} جنيه</span></td></tr>
         """
     
-    total_invoice_amount = sum(item['final_total'] for item in cart_items)
+    subtotal_amount = sum(item['final_total'] for item in cart_items)
+    total_invoice_amount = max(0.0, subtotal_amount - cash_discount)
     arabic_total_words = number_to_arabic_words(total_invoice_amount)
     
-    standard_table_th = "<tr><th>الصنف والبيان</th><th>التصنيف</th><th>الوحدة</th><th>الكمية</th><th>سعر المفرد</th><th>الخصم</th><th>الصافي الإجمالي</th></tr>"
-    standard_table_td = ""
+    standard_table_th = "<thead><tr><th>الصنف والبيان</th><th>التصنيف</th><th>الوحدة</th><th>الكمية</th><th>سعر المفرد</th><th>الخصم</th><th>الصافي</th></tr></thead>"
+    standard_table_td = "<tbody>"
     for item in cart_items:
         standard_table_td += f"<tr><td>{item['item_name']}</td><td>{item.get('category', 'عام')}</td><td>{item.get('unit', 'قطعة')}</td><td>{item['qty']}</td><td>{item['price']} جنيه</td><td>{item['discount']}%</td><td style='font-weight: bold;'>{item['final_total']} جنيه</td></tr>"
+    standard_table_td += "</tbody>"
     
-    store_table_th = "<tr><th>الصنف والبيان</th><th>موقع المخزن</th><th>الكمية المطلوبة للصرف</th></tr>"
-    store_table_td = ""
+    store_table_th = "<thead><tr><th>الصنف والبيان</th><th>موقع المخزن</th><th>الكمية المطلوبة للصرف</th></tr></thead>"
+    store_table_td = "<tbody>"
     for item in cart_items:
         store_table_td += f"<tr><td style='font-size: 15px; font-weight: bold;'>{item['item_name']} ({item.get('unit', 'قطعة')})</td><td>{item.get('warehouse_loc', 'الرئيسي')}</td><td style='font-size: 16px; font-weight: bold;'>{item['qty']}</td></tr>"
+    store_table_td += "</tbody>"
 
     html_content = f"""
     <div class="triple-print-wrapper">
         <style>
             @page {{ size: A5 portrait; margin: 5mm; }}
             @media print {{
-                body {{ direction: rtl; background: #fff; color: #000; padding: 0; margin: 0; }}
+                body {{ direction: rtl; background: #fff; color: #000; padding: 0; margin: 0; font-size: 12px; }}
                 header, [data-testid="stSidebar"], [data-testid="stHeader"], .no-print-zone, .stButton, .download-btn-area {{ display: none !important; }}
-                .invoice-page {{ width: 148mm; height: auto; min-height: 200mm; box-sizing: border-box; padding: 8mm !important; margin: 0 0 10mm 0 !important; page-break-after: always; border: none !important; box-shadow: none !important; }}
-                tr {{ page-break-inside: avoid; }}
+                .invoice-page {{ width: 100%; height: auto; box-sizing: border-box; padding: 5mm !important; margin: 0 0 15mm 0 !important; page-break-after: always; page-break-inside: avoid; border: 2px solid #000 !important; box-shadow: none !important; }}
+                table {{ page-break-inside: auto; }}
+                tr {{ page-break-inside: avoid; page-break-after: auto; }}
+                thead {{ display: table-header-group; }}
+                tfoot {{ display: table-footer-group; }}
             }}
             .triple-print-wrapper {{ direction: rtl; text-align: right; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }}
-            .invoice-page {{ width: 148mm; max-width: 100%; border: 2px solid #000; padding: 20px; margin: 20px auto; background: #fff; color: #000; box-sizing: border-box; page-break-after: always; position: relative; }}
-            .invoice-header {{ text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px; }}
+            .invoice-page {{ width: 148mm; max-width: 100%; border: 2px solid #000; padding: 20px; margin: 20px auto; background: #fff; color: #000; box-sizing: border-box; page-break-after: always; }}
+            .invoice-header {{ text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px; page-break-inside: avoid; }}
             .invoice-header h3 {{ margin: 0; background: #000; color: #fff; padding: 4px 12px; display: inline-block; font-size: 14px; border-radius: 4px; }}
             .invoice-header h1 {{ margin: 6px 0; font-size: 24px; color: #000; font-weight: 700; }}
             .invoice-header p {{ font-size: 12px; margin: 2px 0; color: #000; }}
-            .invoice-details-table {{ width: 100%; font-size: 13px; margin-top: 5px; border-bottom: 1px solid #000; padding-bottom: 8px; }}
+            .invoice-details-table {{ width: 100%; font-size: 13px; margin-top: 5px; border-bottom: 1px solid #000; padding-bottom: 8px; page-break-inside: avoid; }}
             .invoice-details-table td {{ padding: 4px 0; width: 50%; }}
             .invoice-items-table {{ width: 100%; border-collapse: collapse; margin-top: 15px; border: 2px solid black; font-size: 13px; text-align: center; }}
             .invoice-items-table th {{ background: #f2f2f2; border: 1px solid black; padding: 8px; font-weight: bold; color: #000; }}
             .invoice-items-table td {{ border: 1px solid black; padding: 8px; }}
-            .total-words-area {{ margin-top: 15px; background: #fff; border: 1px dashed #000; padding: 8px; font-size: 14px; font-weight: bold; text-align: right; }}
-            .invoice-footer-alert {{ margin-top: 15px; font-size: 11px; font-weight: bold; text-align: center; border: 1px solid #000; padding: 6px; background: #fff; }}
+            .total-words-area {{ margin-top: 15px; background: #fff; border: 1px dashed #000; padding: 8px; font-size: 14px; font-weight: bold; text-align: right; page-break-inside: avoid; }}
+            .invoice-footer-alert {{ margin-top: 15px; font-size: 11px; font-weight: bold; text-align: center; border: 1px solid #000; padding: 6px; background: #fff; page-break-inside: avoid; }}
             .print-trigger-btn {{ background-color: #28a745; color: white; padding: 12px 24px; margin: 10px auto; border: none; border-radius: 5px; cursor: pointer; font-size: 15px; font-weight: bold; display: block; text-align: center; }}
         </style>
         
@@ -222,7 +230,8 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
                 <tr><td><b>رقم الفاتورة:</b> {inv_id}</td><td><b>التاريخ والوقت:</b> {datetime_str}</td></tr>
                 <tr><td><b>اسم العميل:</b> {client_name}</td><td><b>الهاتف:</b> {phone if phone else 'غير محدد'}</td></tr>
                 <tr><td><b>العنوان:</b> {address if address else 'غير محدد'}</td><td><b>المسؤول:</b> {user}</td></tr>
-                <tr><td><b>نوع الدفع:</b> {pay_type}</td><td><b>الإجمالي الكلي:</b> {total_invoice_amount} جنيه</td></tr>
+                <tr><td><b>نوع الدفع:</b> {pay_type}</td><td><b>إجمالي البنود:</b> {subtotal_amount} جنيه</td></tr>
+                <tr><td><b>الخصم النقدي المباشر:</b> <span style="color:red; font-weight:bold;">{cash_discount} جنيه</span></td><td><b>الصافي النهائي المطلوب:</b> <span style="color:blue; font-weight:bold;">{total_invoice_amount} جنيه</span></td></tr>
                 {collect_info}
             </table>
             <table class="invoice-items-table">
@@ -243,7 +252,7 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
                 <tr><td><b>رقم الفاتورة:</b> {inv_id}</td><td><b>التاريخ والوقت:</b> {datetime_str}</td></tr>
                 <tr><td><b>اسم العميل:</b> {client_name}</td><td><b>الهاتف:</b> {phone if phone else 'غير محدد'}</td></tr>
                 <tr><td><b>نوع الدفع:</b> {pay_type}</td><td><b>المسؤول:</b> {user}</td></tr>
-                <tr><td><b>الإجمالي الكلي:</b> {total_invoice_amount} جنيه</td><td></td></tr>
+                <tr><td><b>الخصم النقدي:</b> {cash_discount} جنيه</td><td><b>الصافي النهائي:</b> {total_invoice_amount} جنيه</td></tr>
                 {collect_info}
             </table>
             <table class="invoice-items-table">
@@ -405,7 +414,6 @@ else:
     # --- 2. صفحة رفع رصيد أول المدة ---
     elif "رصيد أول المدة" in choice:
         st.header("📊 رفع وتثبيت رصيد أول المدة ومخزون البضائع")
-        
         t_paste, t_file = st.tabs(["📋 خاصية اللصق السريع المباشر", "📥 رفع ملف Excel"])
         
         def process_and_merge_data(imported_df):
@@ -413,7 +421,6 @@ else:
                 imported_df.columns = imported_df.columns.str.strip()
                 if "كود الصنف" in imported_df.columns:
                     imported_df["كود الصنف"] = imported_df["كود الصنف"].astype(str)
-                    
                     combined = pd.concat([st.session_state.inv_df, imported_df]).drop_duplicates(subset=['كود الصنف'], keep='last')
                     st.session_state.inv_df = combined
                     st.session_state.inv_df.to_csv(INVENTORY_FILE, index=False, encoding='utf-8-sig')
@@ -427,13 +434,11 @@ else:
         with t_paste:
             st.markdown("💡 **انسخ البيانات من جداول الـ Excel بالكامل (بما فيها صف العناوين الرئيسي) ثم الصقها بالأسفل:**")
             pasted_input = st.text_area("قم باللصق هنا (Ctrl + V)", height=250, placeholder="كود الصنف\tاسم الصنف\tتصنيف الصنف...")
-            
             if pasted_input.strip():
                 try:
                     paste_df = pd.read_csv(StringIO(pasted_input), sep="\t")
                     st.write("🔍 **معاينة حية للبيانات التي قمت بلصقها:**")
                     st.dataframe(paste_df, use_container_width=True)
-                    
                     if st.button("🚀 ترحيل وحفظ البيانات الملصوقة فوراً بالقاعدة"):
                         process_and_merge_data(paste_df)
                 except Exception as ex:
@@ -491,7 +496,6 @@ else:
                 cust_colls = collections_df[collections_df["اسم العميل"] == selected_cust] if not collections_df.empty else pd.DataFrame()
                 
                 total_invoiced = pd.to_numeric(cust_sales["إجمالي البيع"], errors='coerce').sum()
-                
                 total_paid_at_invoice = 0.0
                 if not cust_sales.empty:
                     for _, s_row in cust_sales.drop_duplicates("رقم الفاتورة").iterrows():
@@ -499,10 +503,9 @@ else:
                             total_paid_at_invoice += pd.to_numeric(cust_sales[cust_sales["رقم الفاتورة"] == s_row["رقم الفاتورة"]]["إجمالي البيع"], errors='coerce').sum()
                         else:
                             total_paid_at_invoice += pd.to_numeric(s_row.get("المدفوع مقدم", 0), errors='coerce')
-                
+                            
                 total_subsequent_payments = pd.to_numeric(cust_colls["المبلغ المحصل"], errors='coerce').sum() if not cust_colls.empty else 0.0
                 total_returned = pd.to_numeric(cust_returns["المبلغ المردود"], errors='coerce').sum() if not cust_returns.empty else 0.0
-                
                 grand_total_paid = total_paid_at_invoice + total_subsequent_payments
                 current_debt = total_invoiced - grand_total_paid - total_returned
                 
@@ -511,8 +514,8 @@ else:
                 k2.metric("🟢 إجمالي المدفوعات والتحصيلات", f"{grand_total_paid:,.2f} جنيه")
                 k3.metric("↩️ إجمالي المردودات له", f"{total_returned:,.2f} جنيه")
                 k4.metric("🚨 المديونية الحالية بالذمة", f"{current_debt:,.2f} جنيه", delta_color="inverse")
-                
                 st.markdown("---")
+                
                 st.subheader("💳 تسجيل سند تحصيل / دفعة سداد جديدة للعميل")
                 col_pay1, col_pay2, col_pay3 = st.columns(3)
                 pay_amt = col_pay1.number_input("المبلغ المدفوع (جنيه)", min_value=0.0, step=50.0)
@@ -534,9 +537,14 @@ else:
                         st.success(f"🎉 تم تسجيل السند {coll_id} بنجاح وخصمه من حساب العميل!")
                         
                         new_debt_after_pay = current_debt - pay_amt
-                        msg_text = f"عزيزي العميل: {selected_cust}\nتم استلام مبلغ: {pay_amt} جنيهاً مصرياً بحسابكم بطريقة ({pay_method}).\nرقم الحركة: {coll_id}\nالتاريخ: {current_time_str}\nالمديونية المتبقية بذمتكم هي: {new_debt_after_pay:,.2f} جنيه.\nشكراً لتعاملكم مع {SHOWROOM_NAME}."
-                        st.info(f"📨 تم إرسال رسالة نصية تفصيلية إلى رقم هاتف العميل ({cust_phone if cust_phone else 'غير مسجل'}):\n\n \"{msg_text}\"")
+                        msg_text = f"عزيزي العميل: {selected_cust}\n" \
+                                   f"تم استلام مبلغ: {pay_amt} جنيهاً مصرياً بحسابكم بطريقة ({pay_method}).\n" \
+                                   f"رقم الحركة: {coll_id}\n" \
+                                   f"التاريخ: {current_time_str}\n" \
+                                   f"المديونية المتبقية بذمتكم هي: {new_debt_after_pay:,.2f} جنيه.\n" \
+                                   f"شكراً لتعاملكم مع {SHOWROOM_NAME}."
                         
+                        st.info(f"📨 تم إرسال رسالة نصية تفصيلية إلى رقم هاتف العميل ({cust_phone if cust_phone else 'غير مسجل'}):\n\n \"{msg_text}\"")
                         if cust_phone and cust_phone != "nan" and cust_phone != "":
                             clean_phone = cust_phone
                             if clean_phone.startswith("0"): clean_phone = "2" + clean_phone
@@ -544,436 +552,349 @@ else:
                             whatsapp_url = f"https://wa.me/{clean_phone}?text={encoded_msg}"
                             st.markdown(f'<a href="{whatsapp_url}" target="_blank" style="display: block; width: 100%; text-align: center; background-color: #25D366; color: white; padding: 12px; font-weight: bold; text-decoration: none; border-radius: 5px; margin-top: 10px;">🟢 اضغط هنا لفتح وتأكيد إرسال رسالة الـ WhatsApp للعميل فوراً</a>', unsafe_allow_html=True)
                         else:
-                            st.warning("⚠️ لم يتم تفعيل واتساب لعدم وجود رقم هاتف صحيح.")
-                        st.rerun()
+                            st.warning("⚠️ لم يتم توليد رابط واتساب لعدم وجود رقم هاتف صحيح مسجل بملف العميل.")
+                        if st.button("🔄 تحديث الصفحة بعد إرسال الرسالة"):
+                            st.rerun()
 
-    # --- 5. حركة فواتير الشراء ---
+    # --- 5. صفحة فواتير الشراء ---
     elif "حركة فواتير الشراء" in choice:
-        st.header("📥 تسجيل وإدخال فواتير شراء بضائع جديدة")
-        if inv_df.empty:
-            st.info("يرجى إضافة أو رفع تكويد الأصناف أولاً في صفحة إدارة المخزن قبل تسجيل فواتير المشتريات.")
-        else:
-            with st.form("purchase_form"):
-                p_inv_id = st.text_input("رقم فاتورة الشراء (من المورد)", value=str(int(datetime.now().timestamp())))
-                p_supplier = st.text_input("اسم المورد / الشركة", value="مورد عام")
-                p_code = st.selectbox("اختر الصنف المراد شراؤه", inv_df["كود الصنف"].values, format_func=safe_item_format)
-                p_qty = st.number_input("الكمية المشتراة", min_value=1, step=1, value=st.session_state.form_purchase_qty)
-                p_price = st.number_input("سعر شراء الوحدة المعتمد", min_value=0.0, step=1.0)
+        st.header("📥 حركة فواتير الشراء وتوريد البضائع للمخازن")
+        c1, c2, c3 = st.columns(3)
+        p_id = c1.text_input("رقم فاتورة الشراء / المورد").strip()
+        p_sup = c2.text_input("اسم المورد / الشركة المصنعة").strip()
+        p_code = c3.selectbox("اختر الصنف الوارد لتوريده للمخزن", inv_df["كود الصنف"].values if not inv_df.empty else [], format_func=safe_item_format)
+        
+        c4, c5 = st.columns(2)
+        p_qty = c4.number_input("الكمية الموردة", min_value=1, step=1)
+        p_cost = c5.number_input("سعر الشراء الفعلي المعتمد لهذه الشحنة (للوحدة)", min_value=0.0, step=10.0)
+        
+        if st.button("📥 ترحيل الفاتورة وزيادة كميات جرد المخزن فوراً"):
+            if p_id and p_sup and p_code:
+                match_idx = inv_df[inv_df["كود الصنف"] == p_code].index[0]
+                st.session_state.inv_df.at[match_idx, "الكمية"] += int(p_qty)
+                st.session_state.inv_df.at[match_idx, "سعر الشراء"] = float(p_cost)
+                st.session_state.inv_df.to_csv(INVENTORY_FILE, index=False, encoding='utf-8-sig')
                 
-                if st.form_submit_button("📥 ترحيل الفاتورة وزيادة رصيد المخزن فوراً"):
-                    match_inv = inv_df[inv_df["كود الصنف"] == p_code]
-                    p_name = match_inv.iloc[0]["اسم الصنف"]
-                    p_cat = match_inv.iloc[0]["تصنيف الصنف"]
-                    p_unit = match_inv.iloc[0]["نوع الوحدة"]
-                    p_wh = match_inv.iloc[0]["موقع المخزن"]
+                new_p = pd.DataFrame([{
+                    "رقم الفاتورة": p_id, "التاريخ": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "المورد": p_sup, "كود الصنف": p_code, "الصنف": inv_df.at[match_idx, "اسم الصنف"],
+                    "تصنيف الصنف": inv_df.at[match_idx, "تصنيف الصنف"], "نوع الوحدة": inv_df.at[match_idx, "نوع الوحدة"],
+                    "موقع المخزن": inv_df.at[match_idx, "موقع المخزن"], "سعر الشراء المعتمد": p_cost,
+                    "الكمية": p_qty, "إجمالي الشراء": p_qty * p_cost, "المسؤول": st.session_state.user
+                }])
+                st.session_state.purchases_df = pd.concat([purchases_df, new_p], ignore_index=True)
+                st.session_state.purchases_df.to_csv(PURCHASES_FILE, index=False, encoding='utf-8-sig')
+                st.success("🎉 تم تسجيل فاتورة الشراء وزيادة بضائع المخزن وتعديل سعر الشراء الافتراضي بنجاح!")
+                st.rerun()
+
+    # --- 6. صفحة حركة فواتير البيع وتعديل إدخال بند الخصم بالجنيه ---
+    elif "حركة فواتير البيع" in choice:
+        st.header("📤 شاشة كاشير المبيعات المتطورة وإصدار الفواتير الثلاثية")
+        
+        st.subheader("👤 أولاً: بيانات العميل ونظام الفاتورة")
+        sc1, sc2, sc3 = st.columns(3)
+        c_name = sc1.text_input("اسم العميل الثلاثي", value=st.session_state.form_sale_cust_name).strip()
+        c_phone = sc2.text_input("رقم الهاتف", value=st.session_state.form_sale_cust_phone).strip()
+        c_address = sc3.text_input("العنوان بالتفصيل", value=st.session_state.form_sale_cust_address).strip()
+        
+        sc4, sc5, sc6 = st.columns(3)
+        pay_type = sc4.selectbox("نوع البيع وسياسة الدفع", ["نقدي (كاش)", "آجل (على الحساب)"])
+        collect_system = sc5.selectbox("نظام تحصيل الآجل (في حال تم اختيار نظام آجل فقط)", ["أسبوعي", "شهري", "دفعات غير منتظمة", "كاش بالكامل لاحقاً"])
+        collect_date = sc6.date_input("تاريخ استحقاق وتحصيل القسط / المبلغ")
+        
+        st.markdown("---")
+        st.subheader("🛒 ثانياً: إضافة البضائع لسلة المبيعات الحالية")
+        
+        cc1, cc2, cc3 = st.columns(3)
+        sale_code = cc1.selectbox("اختر المنتج من الجرد الحركي المتاح", inv_df["كود الصنف"].values if not inv_df.empty else [], format_func=safe_item_format)
+        
+        if sale_code:
+            match_row = inv_df[inv_df["كود الصنف"] == sale_code].iloc[0]
+            max_qty = int(match_row["الكمية"])
+            default_price = float(match_row["سعر البيع"])
+            st.info(f"📦 المخزون الحالي المتاح لهذا المنتج: {max_qty} {match_row['نوع الوحدة']} | سعر البيع الافتراضي المقترح: {default_price} جنيه")
+            
+            sale_qty = cc2.number_input("الكمية المطلوبة للبيع", min_value=1, max_value=max_qty if max_qty > 0 else 1, step=1)
+            custom_price = cc3.number_input("سعر وحدة البيع الفعلي المقترح والمعدل", value=default_price, min_value=0.0)
+            
+            cc4 = st.columns(1)[0]
+            item_discount = cc4.number_input("نسبة الخصم الممنوحة على هذا الصنف فقط (%)", min_value=0.0, max_value=100.0, value=0.0, step=0.5)
+            
+            if st.button("➕ إضافة البند المحدد للسلة"):
+                if max_qty <= 0:
+                    st.error("❌ عذراً، لا يمكن إتمام إضافة البند لعدم توفر رصيد حركي كافٍ بالمخازن لهذا الصنف.")
+                else:
+                    g_total = sale_qty * custom_price
+                    f_total = g_total * (1 - (item_discount / 100.0))
                     
-                    total_p = p_qty * p_price
-                    current_date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    st.session_state.cart.append({
+                        "item_code": sale_code, "item_name": match_row["اسم الصنف"],
+                        "category": match_row["تصنيف الصنف"], "unit": match_row["نوع الوحدة"],
+                        "warehouse_loc": match_row["موقع المخزن"], "qty": sale_qty,
+                        "price": custom_price, "discount": item_discount,
+                        "gross_total": g_total, "final_total": f_total, "purchase_price": match_row["سعر الشراء"]
+                    })
+                    st.success(f"تم إدراج الصنف [{match_row['اسم الصنف']}] بنجاح داخل السلة الحالية!")
+                    st.rerun()
+
+        if st.session_state.cart:
+            st.markdown("---")
+            st.subheader("📋 البنود الحالية المدرجة في سلة الفاتورة")
+            cart_df = pd.DataFrame(st.session_state.cart)
+            st.dataframe(cart_df[["item_code", "item_name", "qty", "price", "discount", "final_total"]], use_container_width=True)
+            
+            if st.button("🗑️ تفريغ وإلغاء كافة بنود السلة"):
+                st.session_state.cart = []
+                st.rerun()
+                
+            st.markdown("---")
+            st.subheader("💰 ثالثاً: الحسابات الختامية والخصم المباشر")
+            subtotal_cart = cart_df["final_total"].sum()
+            st.metric("إجمالي البنود قبل الخصم النقدي", f"{subtotal_cart:,.2f} جنيه")
+            
+            # بند الخصم الجديد بالأرقام بالجنيه على إجمالي الفاتورة
+            cash_discount = st.number_input("💸 إضافة قيمة خصم نقدي مباشرة بالجنيه على الفاتورة ككل", min_value=0.0, max_value=float(subtotal_cart), value=0.0, step=5.0)
+            
+            final_invoice_total = max(0.0, subtotal_cart - cash_discount)
+            st.subheader(f"الصافي النهائي المطلوب سداده: {final_invoice_total:,.2f} جنيه")
+            
+            sc_paid, sc_rem = 0.0, 0.0
+            if pay_type == "آجل (على الحساب)":
+                cx1, cx2 = st.columns(2)
+                sc_paid = cx1.number_input("المبلغ المدفوع كـ مقدم تعاقد (جنيه)", min_value=0.0, max_value=float(final_invoice_total), value=0.0)
+                sc_rem = final_invoice_total - sc_paid
+                cx2.metric("المتبقي بالذمة كـ دين آجل للعميل", f"{sc_rem:,.2f} جنيه")
+                
+            if st.button("🚀 ترحيل وحفظ وبناء الفاتورة الثلاثية الفورية المتطورة", use_container_width=True):
+                if not c_name:
+                    st.error("يرجى ملء حقل اسم العميل لإصدار الفاتورة بشكل صحيح وقانوني.")
+                else:
+                    inv_id = "INV-" + str(int(datetime.now().timestamp()))
+                    dt_now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     
-                    new_p_row = pd.DataFrame([{
-                        "رقم الفاتورة": p_inv_id, "التاريخ": current_date_str, "المورد": p_supplier, "كود الصنف": p_code,
-                        "الصنف": p_name, "تصنيف الصنف": p_cat, "نوع الوحدة": p_unit, "موقع المخزن": p_wh,
-                        "سعر الشراء المعتمد": p_price, "الكمية": p_qty, "إجمالي الشراء": total_p, "المسؤول": st.session_state.user
-                    }])
+                    sales_records = []
+                    for item in st.session_state.cart:
+                        match_idx = inv_df[inv_df["كود الصنف"] == item["item_code"]].index[0]
+                        st.session_state.inv_df.at[match_idx, "الكمية"] -= int(item["qty"])
+                        
+                        cost_all = item["qty"] * item["purchase_price"]
+                        # توزيع الخصم النقدي بنسبة وتناسب على الأصناف للحفاظ على دقة الأرباح
+                        item_ratio = item["final_total"] / subtotal_cart if subtotal_cart > 0 else 0
+                        allocated_discount = cash_discount * item_ratio
+                        item_net_sale = item["final_total"] - allocated_discount
+                        net_profit = item_net_sale - cost_all
+                        
+                        sales_records.append({
+                            "رقم الفاتورة": inv_id, "التاريخ": dt_now_str, "اسم العميل": c_name,
+                            "هاتف العميل": c_phone, "العنوان": c_address, "نوع البيع": pay_type,
+                            "نظام التحصيل": collect_system if pay_type == "آجل (على الحساب)" else "نقدي",
+                            "تاريخ التحصيل": str(collect_date) if pay_type == "آجل (على الحساب)" else "نقدي",
+                            "المدفوع مقدم": sc_paid, "المتبقي": sc_rem, "كود الصنف": item["item_code"],
+                            "الصنف": item["item_name"], "تصنيف الصنف": item["category"], "نوع الوحدة": item["unit"],
+                            "موقع المخزن": item["warehouse_loc"], "الكمية": item["qty"], "سعر الوحدة": item["price"],
+                            "الخصم %": item["discount"], "إجمالي البيع": item_net_sale, "تكلفة الشراء الإجمالية": cost_all,
+                            "صافي ربح الفاتورة": net_profit, "المسؤول": st.session_state.user, "الخصم النقدي": allocated_discount
+                        })
+                        
+                    st.session_state.inv_df.to_csv(INVENTORY_FILE, index=False, encoding='utf-8-sig')
+                    new_sales_df = pd.DataFrame(sales_records)
+                    st.session_state.sales_df = pd.concat([sales_df, new_sales_df], ignore_index=True)
+                    st.session_state.sales_df.to_csv(SALES_FILE, index=False, encoding='utf-8-sig')
                     
-                    st.session_state.purchases_df = pd.concat([purchases_df, new_p_row], ignore_index=True)
-                    st.session_state.purchases_df.to_csv(PURCHASES_FILE, index=False, encoding='utf-8-sig')
+                    st.success(f"🎉 تم ترحيل وحفظ وتثبيت الفاتورة بنجاح بالرقم الفوري: {inv_id}")
                     
-                    row_idx = inv_df[inv_df["كود الصنف"] == p_code].index[0]
-                    st.session_state.inv_df.at[row_idx, "الكمية"] += int(p_qty)
-                    st.session_state.inv_df.at[row_idx, "سعر الشراء"] = float(p_price)
+                    invoice_html = generate_triple_invoice_html(
+                        inv_id, dt_now_str, c_name, c_phone, c_address, pay_type,
+                        collect_system, str(collect_date), sc_paid, sc_rem,
+                        st.session_state.user, st.session_state.cart,
+                        SHOWROOM_NAME, SHOWROOM_ADDRESS, INQUIRY_NUMBER, cash_discount
+                    )
+                    
+                    st.components.v1.html(invoice_html, height=1400, scrolling=True)
+                    st.markdown(get_download_link(invoice_html, f"invoice_{inv_id}.html"), unsafe_allow_html=True)
+                    
+                    st.session_state.cart = []
+                    st.session_state.form_sale_cust_name = ""
+                    st.session_state.form_sale_cust_phone = ""
+                    st.session_state.form_sale_cust_address = ""
+
+    # --- 7. صفحة ارتجاع فواتير البيع مضافاً إليها بند تعديل الصنف وتغيير سعر الشراء ---
+    elif "ارتجاع فواتير البيع" in choice:
+        st.header("↩️ شاشة إدارة المرتجعات وتعديل أسعار شراء البضائع")
+        
+        rc1, rc2 = st.columns(2)
+        r_invoice_id = rc1.text_input("ادخل رقم فاتورة البيع الأصلية المراد الإرجاع منها").strip()
+        r_cust_name = rc2.text_input("اسم العميل الحالي للتوثيق ماليًا").strip()
+        
+        if r_invoice_id:
+            matched_sales = sales_df[sales_df["رقم الفاتورة"] == r_invoice_id]
+            if matched_sales.empty:
+                st.warning("⚠️ رقم هذه الفاتورة غير مدرج في سجلات البيع المعتمدة بالنظام.")
+            else:
+                st.subheader("📦 الأصناف والكميات المباعة في الفاتورة المحددة")
+                st.dataframe(matched_sales[["كود الصنف", "الصنف", "الكمية", "سعر الوحدة", "إجمالي البيع"]], use_container_width=True)
+                
+                st.markdown("---")
+                st.subheader("🔄 تحديد البيانات المرتجعة وتحديث مواصفات البند")
+                
+                rx1, rx2 = st.columns(2)
+                r_code = rx1.selectbox("اختر البند المرتجع لتعديله وإعادته للمخزن", matched_sales["كود الصنف"].values, format_func=lambda x: f"{x} - {matched_sales[matched_sales['كود الصنف']==x]['الصنف'].values[0]}")
+                
+                item_sale_row = matched_sales[matched_sales["كود الصنف"] == r_code].iloc[0]
+                max_ret_qty = int(item_sale_row["الكمية"])
+                
+                r_qty = rx2.number_input(f"الكمية المرتجعة الفعلية (الحد الأقصى المسموح به {max_ret_qty})", min_value=1, max_value=max_ret_qty, step=1)
+                
+                # بند إضافي جديد لتحديث الصنف وتغيير سعر الشراء فورياً
+                match_inv_row = inv_df[inv_df["كود الصنف"] == r_code].iloc[0]
+                st.info(f"💡 سعر الشراء الحالي الافتراضي المسجل للمنتج بالمخزن هو: {match_inv_row['سعر الشراء']} جنيه.")
+                
+                new_purchase_price = st.number_input("✏️ تعديل وتغيير سعر الشراء المعتمد لهذا الصنف بالمخازن (جنيه)", min_value=0.0, value=float(match_inv_row['سعر الشراء']), step=1.0)
+                
+                unit_refund = float(item_sale_row["سعر الوحدة"]) * (1 - (float(item_sale_row["الخصم %"]) / 100.0))
+                total_refund_amt = r_qty * unit_refund
+                
+                st.subheader(f"💵 المبلغ المستحق رده للعميل فوراً: {total_refund_amt:,.2f} جنيه")
+                
+                if st.button("↩️ تأكيد الارتجاع النهائي وتحديث أسعار الشراء للأصناف"):
+                    # 1. إرجاع الكمية للمخزن وتحديث سعر الشراء المدخل
+                    inv_match_idx = inv_df[inv_df["كود الصنف"] == r_code].index[0]
+                    st.session_state.inv_df.at[inv_match_idx, "الكمية"] += int(r_qty)
+                    st.session_state.inv_df.at[inv_match_idx, "سعر الشراء"] = float(new_purchase_price)
                     st.session_state.inv_df.to_csv(INVENTORY_FILE, index=False, encoding='utf-8-sig')
                     
-                    st.success(f"🎉 تم ترحيل فاتورة الشراء بنجاح وزيادة كمية الصنف ({p_name}) بمقدار {p_qty} قطعة!")
-                    st.rerun()
-
-    # --- 6. صفحة حركة فواتير البيع (تتضمن الآن ميزة التعديل وإدارة أسعار الشراء) ---
-    elif "حركة فواتير البيع" in choice:
-        st.header("📤 نظام مبيعات وعمليات فواتير البيع")
-        
-        # إنشاء التبويبين (إنشاء / تعديل)
-        t_create_sale, t_edit_sale = st.tabs(["📤 إنشاء فاتورة بيع جديدة", "✏️ تعديل فاتورة بيع سابقة"])
-        
-        with t_create_sale:
-            if inv_df.empty:
-                st.info("المخزن فارغ! يرجى إضافة سلع أولاً.")
-            else:
-                st.subheader("🛒 سلة مبيعات الفاتورة الحالية")
-                
-                col_item1, col_item2, col_item3, col_item4 = st.columns([3, 1, 1, 1])
-                sale_code = col_item1.selectbox("اختر المنتج للبيع", inv_df["كود الصنف"].values, format_func=safe_item_format, key="sale_item_box")
-                
-                match_row = inv_df[inv_df["كود الصنف"] == sale_code].iloc[0]
-                available_qty = int(match_row["الكمية"])
-                default_sale_price = float(match_row["سعر البيع"])
-                default_purchase_price = float(match_row["سعر الشراء"])
-                
-                st.caption(f"💡 الكمية المتوفرة بالمخزن حالياً لهذا الصنف: **{available_qty} قطعة**")
-                
-                sale_qty = col_item2.number_input("الكمية المطلوبة", min_value=1, step=1, value=1, key="sale_qty_box")
-                sale_price = col_item3.number_input("سعر البيع المعتمد", min_value=0.0, value=default_sale_price, key="sale_price_box")
-                sale_disc = col_item4.number_input("خصم % للصنف", min_value=0.0, max_value=100.0, value=0.0, step=0.5, key="sale_disc_box")
-                
-                if st.button("➕ إضافة البند للسلة الحالية", use_container_width=True):
-                    if sale_qty > available_qty:
-                        st.error(f"🚨 لا يمكن إضافة البند! الكمية المتاحة بالمخازن ({available_qty}) أقل من كمية الطلب.")
-                    else:
-                        sub_tot = sale_qty * sale_price
-                        f_tot = sub_tot - (sub_tot * (sale_disc / 100))
-                        total_purchase_cost = sale_qty * default_purchase_price
-                        item_profit = f_tot - total_purchase_cost
-                        
-                        st.session_state.cart.append({
-                            "code": sale_code, "item_name": match_row["اسم الصنف"], "category": match_row["تصنيف الصنف"],
-                            "unit": match_row["نوع الوحدة"], "warehouse_loc": match_row["موقع المخزن"], "qty": sale_qty,
-                            "price": sale_price, "discount": sale_disc, "final_total": f_tot, "purchase_cost_total": total_purchase_cost, "profit": item_profit
-                        })
-                        st.success(f"✅ تم إدراج الصنف {match_row['اسم الصنف']} بالسلة.")
-                        st.rerun()
-                
-                if st.session_state.cart:
-                    st.markdown("### 📋 الأصناف المدرجة بالسلة حالياً")
-                    cart_df = pd.DataFrame(st.session_state.cart)
-                    st.dataframe(cart_df[["code", "item_name", "qty", "price", "discount", "final_total"]], use_container_width=True)
-                    
-                    if st.button("❌ تفريغ وإلغاء السلة تماماً"):
-                        st.session_state.cart = []
-                        st.rerun()
-                        
-                    st.markdown("---")
-                    st.subheader("👤 بيانات العميل ونظام ترحيل واستحقاق الفاتورة")
-                    
-                    fc1, fc2, fc3 = st.columns(3)
-                    cust_name = fc1.text_input("اسم العميل الثلاثي", value=st.session_state.form_sale_cust_name).strip()
-                    cust_phone = fc2.text_input("رقم هاتف العميل", value=st.session_state.form_sale_cust_phone).strip()
-                    cust_address = fc3.text_input("عنوان العميل بالتفصيل", value=st.session_state.form_sale_cust_address).strip()
-                    
-                    fc4, fc5, fc6 = st.columns(3)
-                    payment_type = fc4.selectbox("نوع وعقد البيع", ["نقدي (كاش)", "آجل (على الحساب)"])
-                    
-                    collect_system = "غير محدد"
-                    collect_date = "غير محدد"
-                    paid_advance = 0.0
-                    remaining_bal = 0.0
-                    
-                    total_cart_sum = sum(x["final_total"] for x in st.session_state.cart)
-                    
-                    if payment_type == "آجل (على الحساب)":
-                        collect_system = fc5.selectbox("جدولة ونظام التحصيل", ["قسط أسبوعي", "قسط شهري", "دفعات مرنة", "دفعة واحدة مؤجلة"])
-                        collect_date = fc6.text_input("تاريخ استحقاق المديونية", value=datetime.now().strftime("%Y-%m-%d"))
-                        
-                        cc1, cc2 = st.columns(2)
-                        paid_advance = cc1.number_input("المدفوع مقدماً (جدية حجز / كاش)", min_value=0.0, max_value=float(total_cart_sum), value=0.0)
-                        remaining_bal = total_cart_sum - paid_advance
-                        cc2.metric("⚠️ المتبقي في ذمة العميل (آجل)", f"{remaining_bal:,.2f} جنيه")
-                    else:
-                        paid_advance = total_cart_sum
-                        remaining_bal = 0.0
-                        
-                    st.markdown(f"### 💰 إجمالي قيمة الفاتورة النهائي: <span style='color:blue; font-weight:bold;'>{total_cart_sum:,.2f} جنيه</span>", unsafe_allow_html=True)
-                    
-                    if st.button("🚀 إصدار، ترحيل، وحفظ الفاتورة نهائياً وتحديث المخازن", use_container_width=True):
-                        if not cust_name:
-                            st.error("يرجى إدخال اسم العميل أولاً لإتمام الفاتورة.")
-                        else:
-                            new_invoice_id = "INV-" + str(int(datetime.now().timestamp()))
-                            current_datetime_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            
-                            new_sales_entries = []
-                            for cart_item in st.session_state.cart:
-                                new_sales_entries.append({
-                                    "رقم الفاتورة": new_invoice_id, "التاريخ": current_datetime_str, "اسم العميل": cust_name,
-                                    "هاتف العميل": cust_phone, "العنوان": cust_address, "نوع البيع": payment_type,
-                                    "نظام التحصيل": collect_system, "تاريخ التحصيل": collect_date, "المدفوع مقدم": paid_advance,
-                                    "المتبقي": remaining_bal, "كود الصنف": cart_item["code"], "الصنف": cart_item["item_name"],
-                                    "تصنيف الصنف": cart_item["category"], "نوع الوحدة": cart_item["unit"], "موقع المخزن": cart_item["warehouse_loc"],
-                                    "الكمية": cart_item["qty"], "سعر الوحدة": cart_item["price"], "الخصم %": cart_item["discount"],
-                                    "إجمالي البيع": cart_item["final_total"], "تكلفة الشراء الإجمالية": cart_item["purchase_cost_total"],
-                                    "صافي ربح الفاتورة": cart_item["profit"], "المسؤول": st.session_state.user
-                                })
-                                
-                                row_idx = inv_df[inv_df["كود الصنف"] == cart_item["code"]].index[0]
-                                st.session_state.inv_df.at[row_idx, "الكمية"] -= int(cart_item["qty"])
-                                
-                            st.session_state.inv_df.to_csv(INVENTORY_FILE, index=False, encoding='utf-8-sig')
-                            
-                            updated_sales_df = pd.concat([sales_df, pd.DataFrame(new_sales_entries)], ignore_index=True)
-                            st.session_state.sales_df = updated_sales_df
-                            st.session_state.sales_df.to_csv(SALES_FILE, index=False, encoding='utf-8-sig')
-                            
-                            st.success(f"🚀 تم ترحيل الفاتورة {new_invoice_id} وحفظ القيود المالية وتحديث الجرد الحركي للمخازن!")
-                            
-                            html_invoice = generate_triple_invoice_html(
-                                new_invoice_id, current_datetime_str, cust_name, cust_phone, cust_address,
-                                payment_type, collect_system, collect_date, paid_advance, remaining_bal,
-                                st.session_state.user, st.session_state.cart, SHOWROOM_NAME, SHOWROOM_ADDRESS, INQUIRY_NUMBER
-                            )
-                            st.markdown(html_invoice, unsafe_allow_html=True)
-                            st.markdown(get_download_link(html_invoice, f"invoice_{new_invoice_id}.html"), unsafe_allow_html=True)
-                            
-                            st.session_state.cart = []
-                            st.session_state.form_sale_cust_name = ""
-                            st.session_state.form_sale_cust_phone = ""
-                            st.session_state.form_sale_cust_address = ""
-                else:
-                    st.info("سلة المبيعات فارغة، قم باختيار الأصناف من الأعلى لإدراجها هنا.")
-
-        with t_edit_sale:
-            st.subheader("🛠️ بند تعديل فواتير البيع وإدارة أسعار الشراء")
-            if sales_df.empty:
-                st.info("لا توجد فواتير بيع مسجلة لتعديلها.")
-            else:
-                # اختيار رقم الفاتورة المراد تعديلها
-                invoice_list = sales_df["رقم الفاتورة"].unique()
-                selected_inv_id = st.selectbox("اختر رقم الفاتورة للبدء بالتعديل عليها:", invoice_list, key="edit_sale_select")
-                
-                # جلب البنود الخاصة بهذه الفاتورة
-                invoice_items = sales_df[sales_df["رقم الفاتورة"] == selected_inv_id].copy()
-                
-                st.write("📋 **جدول التعديل التفاعلي:** (عدل أسعار الشراء، البيع، أو الكميات مباشرة)")
-                
-                # الأعمدة المحددة التي تشمل أسعار وتكلفة الشراء
-                columns_to_show = [
-                    "كود الصنف", "الصنف", "الكمية", "سعر الوحدة", 
-                    "الخصم %", "تكلفة الشراء الإجمالية", "إجمالي البيع", "صافي ربح الفاتورة"
-                ]
-                
-                # تفعيل محرر البيانات وتحديد الحقول المفتوحة للتعديل والحقول المغلقة
-                edited_items_df = st.data_editor(
-                    invoice_items[columns_to_show], 
-                    use_container_width=True, 
-                    disabled=["كود الصنف", "الصنف", "إجمالي البيع", "صافي ربح الفاتورة"],
-                    key="sales_data_editor"
-                )
-                
-                if st.button("💾 حفظ وتحديث الفاتورة وإعادة احتساب الأرباح حركياً"):
-                    # إعادة معالجة القيود والحسابات والأرباح بناءً على تعديل المستخدم
-                    for idx, row in edited_items_df.iterrows():
-                        orig_idx = invoice_items.index[idx]
-                        
-                        qty = float(row["الكمية"])
-                        price = float(row["سعر الوحدة"])
-                        disc = float(row["الخصم %"])
-                        purchase_cost = float(row["تكلفة الشراء الإجمالية"]) # يظهر للتحكم وتعديل سعر الشراء
-                        
-                        # حساب المعادلة المالية الجديدة للبيع والأرباح
-                        sub_total = qty * price
-                        final_sale = sub_total - (sub_total * (disc / 100))
-                        net_profit = final_sale - purchase_cost
-                        
-                        # التحديث الفوري في Session State
-                        st.session_state.sales_df.at[orig_idx, "الكمية"] = qty
-                        st.session_state.sales_df.at[orig_idx, "سعر الوحدة"] = price
-                        st.session_state.sales_df.at[orig_idx, "الخصم %"] = disc
-                        st.session_state.sales_df.at[orig_idx, "تكلفة الشراء الإجمالية"] = purchase_cost
-                        st.session_state.sales_df.at[orig_idx, "إجمالي البيع"] = final_sale
-                        st.session_state.sales_df.at[orig_idx, "صافي ربح الفاتورة"] = net_profit
-                    
-                    # حفظ التحديثات النهائية في ملف قاعدة البيانات CSV المعتمد
-                    st.session_state.sales_df.to_csv(SALES_FILE, index=False, encoding='utf-8-sig')
-                    st.success(f"🚀 تم تحديث الفاتورة رقم {selected_inv_id} وإعادة احتساب الأرباح حركياً بنجاح!")
-                    st.rerun()
-
-    # --- 7. صفحة ارتجاع فواتير البيع ---
-    elif "ارتجاع فواتير البيع" in choice:
-        st.header("↩️ نظام إدارة وإصدار مرتجعات فواتير البيع")
-        if sales_df.empty:
-            st.info("لا توجد مبيعات مسجلة للارتجاع.")
-        else:
-            with st.form("return_form"):
-                r_inv_id = st.selectbox("اختر رقم الفاتورة المراد الارتجاع منها", sales_df["رقم الفاتورة"].unique())
-                matched_sales = sales_df[sales_df["رقم الفاتورة"] == r_inv_id]
-                r_code = st.selectbox("اختر الصنف المراد إرجاعه", matched_sales["كود الصنف"].values, format_func=safe_item_format)
-                
-                sale_row = matched_sales[matched_sales["كود الصنف"] == r_code].iloc[0]
-                max_returnable = int(sale_row["الكمية"])
-                item_unit_price = float(sale_row["سعر الوحدة"])
-                item_discount = float(sale_row["الخصم %"])
-                
-                r_qty = st.number_input(f"الكمية المرجعة (الحد الأقصى المسموح به: {max_returnable})", min_value=1, max_value=max_returnable, value=1, step=1)
-                
-                if st.form_submit_button("↩️ تأكيد وإصدار إذن الارتجاع"):
-                    current_date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    r_id = "RET-" + str(int(datetime.now().timestamp()))
-                    
-                    sub_t = r_qty * item_unit_price
-                    refund_amt = sub_t - (sub_t * (item_discount / 100))
-                    
-                    new_r_row = pd.DataFrame([{
-                        "رقم الإرجاع": r_id, "رقم الفاتورة الأصلية": r_inv_id, "التاريخ": current_date_str,
-                        "اسم العميل": sale_row["اسم العميل"], "كود الصنف": r_code, "الصنف": sale_row["الصنف"],
-                        "الكمية المرجعة": r_qty, "المبلغ المردود": refund_amt, "المسؤول": st.session_state.user
+                    # 2. تسجيل الفاتورة في المردودات
+                    ret_id = "RET-" + str(int(datetime.now().timestamp()))
+                    new_ret = pd.DataFrame([{
+                        "رقم الإرجاع": ret_id, "رقم الفاتورة الأصلية": r_invoice_id,
+                        "التاريخ": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "اسم العميل": r_cust_name if r_cust_name else item_sale_row["اسم العميل"],
+                        "كود الصنف": r_code, "الصنف": item_sale_row["الصنف"], "الكمية المرجعة": r_qty,
+                        "المبلغ المردود": total_refund_amt, "المسؤول": st.session_state.user
                     }])
-                    
-                    st.session_state.returns_df = pd.concat([returns_df, new_r_row], ignore_index=True)
+                    st.session_state.returns_df = pd.concat([returns_df, new_ret], ignore_index=True)
                     st.session_state.returns_df.to_csv(RETURNS_FILE, index=False, encoding='utf-8-sig')
                     
-                    if r_code in inv_df["كود الصنف"].values:
-                        inv_idx = inv_df[inv_df["كود الصنف"] == r_code].index[0]
-                        st.session_state.inv_df.at[inv_idx, "الكمية"] += int(r_qty)
-                        st.session_state.inv_df.to_csv(INVENTORY_FILE, index=False, encoding='utf-8-sig')
-                    
-                    sales_row_idx = sales_df[(sales_df["رقم الفاتورة"] == r_inv_id) & (sales_df["كود الصنف"] == r_code)].index[0]
-                    st.session_state.sales_df.at[sales_row_idx, "الكمية"] -= int(r_qty)
-                    
-                    old_item_sale_total = float(st.session_state.sales_df.at[sales_row_idx, "إجمالي البيع"])
-                    st.session_state.sales_df.at[sales_row_idx, "إجمالي البيع"] = old_item_sale_total - refund_amt
-                    
-                    old_item_purchase_cost = float(st.session_state.sales_df.at[sales_row_idx, "تكلفة الشراء الإجمالية"])
-                    single_item_purchase_cost = old_item_purchase_cost / max_returnable if max_returnable > 0 else 0
-                    new_item_purchase_cost = old_item_purchase_cost - (single_item_purchase_cost * r_qty)
-                    st.session_state.sales_df.at[sales_row_idx, "تكلفة الشراء الإجمالية"] = new_item_purchase_cost
-                    
-                    st.session_state.sales_df.at[sales_row_idx, "صافي ربح الفاتورة"] = (old_item_sale_total - refund_amt) - new_item_purchase_cost
-                    
-                    st.session_state.sales_df.to_csv(SALES_FILE, index=False, encoding='utf-8-sig')
-                    
-                    st.success(f"🎉 تم تسجيل المرتجع بنجاح برقم {r_id} وإعادة السلع إلى المخازن!")
+                    st.success("🎉 تم تسجيل عملية المردودات بنجاح، وإعادة الكمية للمخزن، وتحديث وتثبيت سعر الشراء الجديد للصنف كلياً!")
                     st.rerun()
 
-    # --- 8. صفحة البحث عن الفواتير وطباعتها ---
+    # --- 8. صفحة البحث وطباعة الفواتير ---
     elif "البحث عن الفواتير وطباعتها" in choice:
-        st.header("🔎 محرك البحث عن الفواتير وطباعتها الذكية (A5)")
-        if sales_df.empty:
-            st.info("لا توجد فواتير مبيعات مسجلة للبحث عنها.")
-        else:
-            search_inv_id = st.selectbox("اختر أو ابحث برقم الفاتورة لطباعتها:", sales_df["رقم الفاتورة"].unique())
-            
-            matched_records = sales_df[sales_df["رقم الفاتورة"] == search_inv_id]
-            if matched_records.empty:
-                st.warning("لم يتم العثور على أي قيود لهذه الفاتورة.")
+        st.header("🔎 البحث عن الفواتير القديمة وإعادة طباعتها فوراً")
+        search_id = st.text_input("ادخل رقم الفاتورة للبحث عنها (INV-XXXX)").strip()
+        if search_id:
+            f_sales = sales_df[sales_df["رقم الفاتورة"] == search_id]
+            if f_sales.empty: st.warning("لا توجد فاتورة مسجلة بهذا الرقم.")
             else:
-                first_row = matched_records.iloc[0]
+                first_row = f_sales.iloc[0]
+                st.write(f"**اسم العميل:** {first_row['اسم العميل']} | **التاريخ:** {first_row['التاريخ']} | **المسؤول:** {first_row['المسؤول']}")
+                st.dataframe(f_sales[["كود الصنف", "الصنف", "الكمية", "سعر الوحدة", "إجمالي البيع"]])
                 
-                st.markdown(f"**📄 تفاصيل أساسية للفاتورة:**")
-                st.write(f"العميل: **{first_row['اسم العميل']}** | التاريخ: **{first_row['التاريخ']}** | المسؤول: **{first_row['المسؤول']}** | نوع الدفع: **{first_row['نوع البيع']}**")
-                
-                st.dataframe(matched_records[["كود الصنف", "الصنف", "الكمية", "سعر الوحدة", "الخصم %", "إجمالي البيع"]], use_container_width=True)
-                
-                reconstructed_cart = []
-                for _, r in matched_records.iterrows():
-                    reconstructed_cart.append({
+                re_cart = []
+                for _, r in f_sales.iterrows():
+                    re_cart.append({
                         "item_name": r["الصنف"], "category": r.get("تصنيف الصنف", "عام"), "unit": r.get("نوع الوحدة", "قطعة"),
                         "warehouse_loc": r.get("موقع المخزن", "الرئيسي"), "qty": int(r["الكمية"]), "price": float(r["سعر الوحدة"]),
                         "discount": float(r["الخصم %"]), "final_total": float(r["إجمالي البيع"])
                     })
                 
-                if st.button("🖨️ تجهيز وعرض معاينة الفاتورة للطباعة المستقلة"):
-                    html_invoice = generate_triple_invoice_html(
-                        search_inv_id, first_row['التاريخ'], first_row['اسم العميل'], first_row.get('هاتف العميل', ''),
-                        first_row.get('العنوان', ''), first_row['نوع البيع'], first_row.get('نظام التحصيل', 'غير محدد'),
-                        first_row.get('تاريخ التحصيل', 'غير محدد'), float(first_row.get('المدفوع مقدم', 0)),
-                        float(first_row.get('المتبقي', 0)), first_row['المسؤول'], reconstructed_cart, SHOWROOM_NAME, SHOWROOM_ADDRESS, INQUIRY_NUMBER
+                cash_discount_val = float(first_row.get("الخصم النقدي", 0.0))
+                
+                if st.button("🖨️ توليد وإصدار أمر طباعة جديد للفاتورة"):
+                    invoice_html = generate_triple_invoice_html(
+                        search_id, first_row['التاريخ'], first_row['اسم العميل'], first_row['هاتف العميل'], first_row['العنوان'],
+                        first_row['نوع البيع'], first_row['نظام التحصيل'], first_row['تاريخ التحصيل'], first_row['المدفوع مقدم'],
+                        first_row['المتبقي'], first_row['المسؤول'], re_cart, SHOWROOM_NAME, SHOWROOM_ADDRESS, INQUIRY_NUMBER, cash_discount_val
                     )
-                    st.markdown(html_invoice, unsafe_allow_html=True)
-                    st.markdown(get_download_link(html_invoice, f"invoice_{search_inv_id}.html"), unsafe_allow_html=True)
+                    st.components.v1.html(invoice_html, height=1400, scrolling=True)
 
     # --- 9. صفحة التقارير والأرباح ---
     elif "تقارير البيع والشراء والأرباح" in choice:
-        st.header("📈 لوحة تقارير الأرباح والخسائر وحركات المال")
+        st.header("📈 التقارير المالية التفصيلية وحسابات الأرباح والخسائر المعرض")
+        s_total = pd.to_numeric(sales_df["إجمالي البيع"], errors='coerce').sum()
+        p_total = pd.to_numeric(purchases_df["إجمالي الشراء"], errors='coerce').sum()
+        e_total = pd.to_numeric(exp_df["المبلغ"], errors='coerce').sum()
+        r_total = pd.to_numeric(returns_df["المبلغ المردود"], errors='coerce').sum() if not returns_df.empty else 0.0
         
-        rep_sales_total = pd.to_numeric(sales_df["إجمالي البيع"], errors='coerce').sum() if not sales_df.empty else 0.0
-        rep_purchases_total = pd.to_numeric(purchases_df["إجمالي الشراء"], errors='coerce').sum() if not purchases_df.empty else 0.0
-        rep_expenses_total = pd.to_numeric(exp_df["المبلغ"], errors='coerce').sum() if not exp_df.empty else 0.0
+        gross_profit = pd.to_numeric(sales_df["صافي ربح الفاتورة"], errors='coerce').sum()
+        net_profit_total = gross_profit - e_total - r_total
         
-        gross_profit = pd.to_numeric(sales_df["صافي ربح الفاتورة"], errors='coerce').sum() if not sales_df.empty else 0.0
-        net_profit_total = gross_profit - rep_expenses_total
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("🛒 صافي المبيعات الإجمالي", f"{s_total:,.2f} جنيه")
+        c2.metric("📥 مشتريات وتوريدات البضائع", f"{p_total:,.2f} جنيه")
+        c3.metric("💸 مصاريف ونثريات التشغيل", f"{e_total:,.2f} جنيه")
+        c4.metric("↩️ إجمالي قيم المردودات", f"{r_total:,.2f} جنيه")
         
-        m1, m2, m3 = st.columns(3)
-        m1.metric("📊 إجمالي المبيعات (حركة البيع)", f"{rep_sales_total:,.2f} جنيه")
-        m2.metric("📥 إجمالي المشتريات البضاعة", f"{rep_purchases_total:,.2f} جنيه")
-        m3.metric("💸 إجمالي مصاريف التشغيل والنثرية", f"{rep_expenses_total:,.2f} جنيه")
-        
-        p1, p2 = st.columns(2)
-        p1.metric("💰 مجمل أرباح مبيعات البضائع", f"{gross_profit:,.2f} جنيه")
-        p2.metric("🚀 صافي الأرباح النهائية للمؤسسة", f"{net_profit_total:,.2f} جنيه")
-        
-        st.markdown("---")
-        st.subheader("📋 تفاصيل السجلات المالية لحركات المبيعات")
-        st.dataframe(sales_df, use_container_width=True)
+        d1, d2 = st.columns(2)
+        d1.metric("📊 مجمل الربح التجاري للبضاعة", f"{gross_profit:,.2f} جنيه")
+        d2.metric("🏁 صافي الأرباح النهائي للمعرض", f"{net_profit_total:,.2f} جنيه")
 
     # --- 10. صفحة المصاريف ---
     elif "المصاريف" in choice:
-        st.header("💸 دفتر قيد حساب المصاريف والنشاط")
+        st.header("💸 إدارة وتقييد المصاريف اليومية والنثريات الخزينة")
         st.dataframe(exp_df, use_container_width=True)
-        
-        with st.form("exp_form"):
-            exp_desc = st.text_input("بيان وجدولة المصروف").strip()
-            exp_val = st.number_input("المبلغ المدفوع (جنيه)", min_value=0.0, step=10.0)
-            if st.form_submit_button("💾 قيد وحفظ المصروف فوراً"):
-                if exp_desc and exp_val > 0:
-                    current_date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    new_exp = pd.DataFrame([{"التاريخ": current_date_str, "البيان": exp_desc, "المبلغ": exp_val, "المسؤول": st.session_state.user}])
-                    st.session_state.exp_df = pd.concat([exp_df, new_exp], ignore_index=True)
-                    st.session_state.exp_df.to_csv(EXPENSES_FILE, index=False, encoding='utf-8-sig')
-                    st.success("✅ تم قيد بند المصروف بنجاح!")
-                    st.rerun()
+        c1, c2 = st.columns(2)
+        ex_label = c1.text_input("بيان المنصرف / وجهة الصرف").strip()
+        ex_val = c2.number_input("المبلغ المنصرف (جنيه)", min_value=0.0, step=10.0)
+        if st.button("💾 ترحيل البند للمصاريف"):
+            if ex_label and ex_val > 0:
+                new_ex = pd.DataFrame([{"التاريخ": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "البيان": ex_label, "المبلغ": ex_val, "المسؤول": st.session_state.user}])
+                st.session_state.exp_df = pd.concat([exp_df, new_ex], ignore_index=True)
+                st.session_state.exp_df.to_csv(EXPENSES_FILE, index=False, encoding='utf-8-sig')
+                st.success("✅ تم حفظ البند وخصمه من مجمل الأرباح بنجاح!")
+                st.rerun()
 
     # --- 11. صفحة الحضور والانصراف ---
     elif "الحضور والانصراف" in choice:
-        st.header("⏰ نظام الحضور والانصراف الإلكتروني للموظفين")
+        st.header("⏰ نظام تسجيل حضور وانصراف موظفي وعمال المعرض")
         st.dataframe(att_df, use_container_width=True)
-        
-        current_date_today = datetime.now().strftime("%Y-%m-%d")
-        current_time_now = datetime.now().strftime("%H:%M:%S")
-        
-        ac1, ac2 = st.columns(2)
-        if ac1.button("🟢 تسجيل إثبات الحضور الآن", use_container_width=True):
-            match_att = att_df[(att_df["الموظف"] == st.session_state.user) & (att_df["التاريخ"] == current_date_today)]
-            if not match_att.empty:
-                st.warning("⚠️ أنت مسجل حضور بالفعل لهذا اليوم!")
-            else:
-                new_att = pd.DataFrame([{"الموظف": st.session_state.user, "التاريخ": current_date_today, "وقت الحضور": current_time_now, "وقت الانصراف": "لم ينصرف"}])
-                st.session_state.att_df = pd.concat([att_df, new_att], ignore_index=True)
+        c1, c2 = st.columns(2)
+        if c1.button("⏰ تسجيل بصمة حضور الآن", use_container_width=True):
+            new_att = pd.DataFrame([{"الموظف": st.session_state.user, "التاريخ": datetime.now().strftime("%Y-%m-%d"), "وقت الحضور": datetime.now().strftime("%H:%M:%S"), "وقت الانصراف": "لم ينصرف بعد"}])
+            st.session_state.att_df = pd.concat([att_df, new_att], ignore_index=True)
+            st.session_state.att_df.to_csv(ATTENDANCE_FILE, index=False, encoding='utf-8-sig')
+            st.success("🎉 تم تسجيل حضورك بنجاح! يوم سعيد عمل موفق.")
+            st.rerun()
+        if c2.button("⏰ تسجيل بصمة انصراف الآن", use_container_width=True):
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            match = att_df[(att_df["الموظف"] == st.session_state.user) & (att_df["التاريخ"] == today_str)]
+            if not match.empty:
+                last_idx = match.index[-1]
+                st.session_state.att_df.at[last_idx, "وقت الانصراف"] = datetime.now().strftime("%H:%M:%S")
                 st.session_state.att_df.to_csv(ATTENDANCE_FILE, index=False, encoding='utf-8-sig')
-                st.success(f"🌅 تم تسجيل حضورك بنجاح في تمام الساعة {current_time_now}")
+                st.success("✅ تم تسجيل انصرافك بنجاح! في رعاية الله.")
                 st.rerun()
-                
-        if ac2.button("🔴 تسجيل إثبات الانصراف الآن", use_container_width=True):
-            match_att = att_df[(att_df["الموظف"] == st.session_state.user) & (att_df["التاريخ"] == current_date_today)]
-            if match_att.empty:
-                st.error("❌ لم تقم بتسجيل الحضور أولاً لتقوم بالانصراف!")
-            else:
-                idx = match_att.index[0]
-                st.session_state.att_df.at[idx, "وقت الانصراف"] = current_time_now
-                st.session_state.att_df.to_csv(ATTENDANCE_FILE, index=False, encoding='utf-8-sig')
-                st.success(f"🌌 تم تسجيل انصرافك بنجاح في تمام الساعة {current_time_now}")
-                st.rerun()
+            else: st.error("عذراً، لم يتم العثور على حركة حضور مسجلة لك اليوم لإتمام الانصراف عليها.")
 
-    # --- 12. صفحة إدارة وتعديل الصلاحيات والحسابات ---
+    # --- 12. صفحة الصلاحيات والمستخدمين ---
     elif "إدارة وتعديل الصلاحيات والحسابات" in choice:
-        st.header("⚙️ لوحة تحكم الحسابات والصلاحيات والأدوار")
-        
-        tab_users, tab_roles = st.tabs(["👥 الحسابات الحالية بالنظام", "🔑 لوحة الصلاحيات للأقسام"])
+        st.header("⚙️ لوحة التحكم بالحسابات والقواعد التفصيلية")
+        tab_users, tab_roles = st.tabs(["👥 حسابات الموظفين", "🔑 الصلاحيات والموقع"])
+        u_df = pd.read_csv(USERS_FILE, dtype=str)
         
         with tab_users:
-            u_data = pd.read_csv(USERS_FILE)
-            st.dataframe(u_data, use_container_width=True)
-            
-            st.subheader("➕ إضافة حساب موظف جديد")
+            st.dataframe(u_df, use_container_width=True)
             with st.form("add_user_form"):
-                new_username = st.text_input("اسم المستخدم الجديد").strip()
-                new_password = st.text_input("كلمة المرور الخاصة به").strip()
-                new_role = st.selectbox("الرتبة والدور", ["مدير", "مشرف", "موظف"])
-                
-                if st.form_submit_button("🚀 حفظ الحساب وتفعيل صلاحياته"):
-                    if new_username and new_password:
-                        if new_username in u_data["username"].values:
-                            st.warning("⚠️ اسم المستخدم هذا موجود مسبقاً!")
+                st.subheader("➕ إنشاء حساب مستخدم جديد")
+                new_u = st.text_input("اسم المستخدم الجديد").strip()
+                new_p = st.text_input("كلمة المرور السرية").strip()
+                new_r = st.selectbox("الرتبة الممنوحة له", ["مدير", "مشرف", "موظف"])
+                if st.form_submit_button("💾 تكويد الحساب"):
+                    if new_u and new_p:
+                        if new_u in u_df["username"].values: st.error("المستخدم موجود مسبقاً.")
                         else:
-                            updated_u = pd.concat([u_data, pd.DataFrame([{"username": new_username, "password": new_password, "role": new_role}])], ignore_index=True)
-                            updated_u.to_csv(USERS_FILE, index=False, encoding='utf-8-sig')
-                            st.success(f"🎉 تم إنشاء حساب الموظف {new_username} بنجاح!")
+                            added_u = pd.DataFrame([{"username": new_u, "password": new_p, "role": new_r}])
+                            pd.concat([u_df, added_u]).to_csv(USERS_FILE, index=False, encoding='utf-8-sig')
+                            st.success("🚀 تم الحفظ!")
                             st.rerun()
-            
-            st.subheader("❌ حذف حساب مستخدم")
-            user_to_delete = st.selectbox("اختر الحساب المراد حذفه نهائياً:", u_data["username"].values)
-            if user_to_delete == "admin":
-                st.error("لا يمكن حذف حساب الأدمن الأساسي لحماية النظام.")
-            else:
-                if st.button("🔥 تأكيد حذف هذا الحساب فوراً"):
-                    updated_u = u_data[u_data["username"] != user_to_delete]
-                    updated_u.to_csv(USERS_FILE, index=False, encoding='utf-8-sig')
+            st.markdown("---")
+            st.subheader("🗑️ حذف حساب من القاعدة")
+            del_user_target = st.selectbox("اختر الحساب المراد إزالته", u_df["username"].values)
+            if st.button("🔥 حذف الحساب المختار نهائياً"):
+                if del_user_target == "admin":
+                    st.error("❌ لا يمكن حذف الحساب الرئيسي للمدير الأساسي للنظام (admin)!")
+                else:
+                    updated_users = u_df[u_df["username"] != del_user_target]
+                    updated_users.to_csv(USERS_FILE, index=False, encoding='utf-8-sig')
                     st.success("🗑️ تم حذف الحساب من السجلات بنجاح!")
                     st.rerun()
 
@@ -995,5 +916,5 @@ else:
             if st.form_submit_button("💾 حفظ وتحديث الإعدادات"):
                 updated_settings = pd.DataFrame([{"اسم المعرض": new_showroom_name, "العنوان": new_showroom_address, "رقم الدعم": new_inquiry_number}])
                 updated_settings.to_csv(SETTINGS_FILE, index=False, encoding='utf-8-sig')
-                st.success("🚀 تم تحديث وحفظ بيانات الفواتير والدعم بنجاح!")
+                st.success("✅ تم تحديث بيانات لوحة الفاتورة والاتصال!")
                 st.rerun()
