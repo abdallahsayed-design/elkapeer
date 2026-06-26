@@ -179,6 +179,7 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
     for item in cart_items:
         standard_table_td += f"<tr><td>{item['item_name']}</td><td>{item.get('category', 'عام')}</td><td>{item.get('unit', 'قطعة')}</td><td>{item['qty']}</td><td>{item['price']} جنيه</td><td>{item['discount']}%</td><td style='font-weight: bold;'>{item['final_total']} جنيه</td></tr>"
     
+    # إضافة سطر الخصم المباشر لجدول الأصناف إن وجد
     if discount_fixed > 0:
         standard_table_td += f"<tr style='background:#f9f9f9; font-weight:bold;'><td colspan='6' style='text-align:left; padding-left:15px;'>خصم نقدي مباشر على الفاتورة:</td><td style='color:red;'>-{discount_fixed} جنيه</td></tr>"
     
@@ -198,12 +199,10 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
                     max-width: 100% !important;
                     height: auto !important; 
                     page-break-after: always !important; 
-                    page-break-inside: avoid !important;
-                    border: 2px solid #000 !important;
-                    margin: 0 0 40px 0 !important;
-                    padding: 20px !important;
+                    border: 1px solid #000 !important;
+                    margin-bottom: 30px !important;
+                    padding: 15px !important;
                     box-shadow: none !important;
-                    display: block !important;
                 }}
             }}
             .triple-print-wrapper {{ direction: rtl; text-align: right; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }}
@@ -215,7 +214,6 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
                 background: #fff; 
                 color: #000; 
                 box-sizing: border-box; 
-                page-break-inside: avoid;
             }}
             .invoice-header {{ text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px; }}
             .invoice-header h3 {{ margin: 0; background: #000; color: #fff; padding: 4px 12px; display: inline-block; font-size: 14px; border-radius: 4px; }}
@@ -329,6 +327,7 @@ else:
     st.sidebar.title(f"👤 {st.session_state.user}")
     st.sidebar.write(f"الرتبة: **{st.session_state.role}**")
     
+    # ربط اختيار الـ Sidebar بـ Session State للحفاظ على حالة الصفحة الحالية عند التنقل
     if st.session_state.system_page_choice not in sidebar_pages:
         st.session_state.system_page_choice = sidebar_pages[0]
         
@@ -509,6 +508,7 @@ else:
                 selected_cust = st.selectbox("اختر العميل لاستعراض ماليته:", all_custs)
                 cust_info = contacts_df[(contacts_df["الاسم"] == selected_cust) & (contacts_df["النوع"] == "عميل")]
                 
+                # تم إصلاح هذا السطر ليعتمد على حقل "الهاتف" الفعلي المسجل في قاعدة البيانات
                 cust_phone = str(cust_info.iloc[0]["الهاتف"]).strip() if not cust_info.empty else ""
                 
                 cust_sales = sales_df[sales_df["اسم العميل"] == selected_cust]
