@@ -179,7 +179,6 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
     for item in cart_items:
         standard_table_td += f"<tr><td>{item['item_name']}</td><td>{item.get('category', 'عام')}</td><td>{item.get('unit', 'قطعة')}</td><td>{item['qty']}</td><td>{item['price']} جنيه</td><td>{item['discount']}%</td><td style='font-weight: bold;'>{item['final_total']} جنيه</td></tr>"
     
-    # إضافة سطر الخصم المباشر لجدول الأصناف إن وجد
     if discount_fixed > 0:
         standard_table_td += f"<tr style='background:#f9f9f9; font-weight:bold;'><td colspan='6' style='text-align:left; padding-left:15px;'>خصم نقدي مباشر على الفاتورة:</td><td style='color:red;'>-{discount_fixed} جنيه</td></tr>"
     
@@ -199,10 +198,12 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
                     max-width: 100% !important;
                     height: auto !important; 
                     page-break-after: always !important; 
-                    border: 1px solid #000 !important;
-                    margin-bottom: 30px !important;
-                    padding: 15px !important;
+                    page-break-inside: avoid !important;
+                    border: 2px solid #000 !important;
+                    margin: 0 0 40px 0 !important;
+                    padding: 20px !important;
                     box-shadow: none !important;
+                    display: block !important;
                 }}
             }}
             .triple-print-wrapper {{ direction: rtl; text-align: right; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }}
@@ -214,6 +215,7 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
                 background: #fff; 
                 color: #000; 
                 box-sizing: border-box; 
+                page-break-inside: avoid;
             }}
             .invoice-header {{ text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 10px; }}
             .invoice-header h3 {{ margin: 0; background: #000; color: #fff; padding: 4px 12px; display: inline-block; font-size: 14px; border-radius: 4px; }}
@@ -327,7 +329,6 @@ else:
     st.sidebar.title(f"👤 {st.session_state.user}")
     st.sidebar.write(f"الرتبة: **{st.session_state.role}**")
     
-    # ربط اختيار الـ Sidebar بـ Session State للحفاظ على حالة الصفحة الحالية عند التنقل
     if st.session_state.system_page_choice not in sidebar_pages:
         st.session_state.system_page_choice = sidebar_pages[0]
         
@@ -507,7 +508,9 @@ else:
             else:
                 selected_cust = st.selectbox("اختر العميل لاستعراض ماليته:", all_custs)
                 cust_info = contacts_df[(contacts_df["الاسم"] == selected_cust) & (contacts_df["النوع"] == "عميل")]
-                cust_phone = str(cust_info.iloc[0]["Hesabe"]).strip() if not cust_info.empty and "Hesabe" in cust_info.columns else (str(cust_info.iloc[0]["الهاتف"]).strip() if not cust_info.empty else "")
+                
+                cust_phone = str(cust_info.iloc[0]["الهاتف"]).strip() if not cust_info.empty else ""
+                
                 cust_sales = sales_df[sales_df["اسم العميل"] == selected_cust]
                 cust_returns = returns_df[returns_df["اسم العميل"] == selected_cust] if not returns_df.empty else pd.DataFrame()
                 cust_colls = collections_df[collections_df["اسم العميل"] == selected_cust] if not collections_df.empty else pd.DataFrame()
@@ -549,7 +552,7 @@ else:
                         msg_text = f"عزيزي العميل: {selected_cust}\nتم استلام مبلغ: {pay_amt} جنيهاً مصرياً بحسابكم بطريقة ({pay_method}).\nرقم الحركة: {coll_id}\nالتاريخ: {current_time_str}\nالمديونية المتبقية بذمتكم هي: {new_debt_after_pay:,.2f} جنيه.\nشكراً لتعاملكم مع {SHOWROOM_NAME}."
                         st.info(f"📨 تم إرسال رسالة نصية تفصيلية إلى رقم هاتف العميل ({cust_phone if cust_phone else 'غير مسجل'}):\n\n \"{msg_text}\"")
 
-    # --- 5. حركة فواتير الشراء والتعديل والارتجاع (تمت المطابقة هنا للظهور السليم) ---
+    # --- 5. حركة فواتير الشراء والتعديل والارتجاع ---
     elif "📥 حركة فواتير الشراء والتعديل" in choice:
         st.header("📥 حركات فواتير الشراء وتغذية المخزون بالبضائع")
         
@@ -560,7 +563,6 @@ else:
                 p1, p2, p3 = st.columns(3)
                 p_invoice = p1.text_input("رقم فاتورة الشراء", value="PUR-" + str(int(datetime.now().timestamp())))
                 
-                # جلب أسماء الموردين المكودين مسبقاً لتسهيل الإدخال
                 all_suppliers = contacts_df[contacts_df["النوع"] == "مورد"]["الاسم"].unique() if not contacts_df.empty else []
                 if len(all_suppliers) > 0:
                     p_supplier = p2.selectbox("اسم المورد / الشركة", all_suppliers)
