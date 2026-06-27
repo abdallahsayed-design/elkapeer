@@ -174,11 +174,10 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
     total_invoice_amount = max(0.0, subtotal_before_discount - discount_fixed)
     arabic_total_words = number_to_arabic_words(total_invoice_amount)
     
-    # تم إزالة أعمدة التصنيف والخصم من رأس الجدول بناءً على طلبك
+    # رأس الجدول الأساسي
     standard_table_th = "<tr><th>الصنف والبيان</th><th>الوحدة</th><th>الكمية</th><th>سعر المفرد</th><th>الصافي الإجمالي</th></tr>"
     standard_table_td = ""
     for item in cart_items:
-        # تم إزالة حقول التصنيف والخصم من تعبئة البيانات
         standard_table_td += f"<tr><td>{item['item_name']}</td><td>{item.get('unit', 'قطعة')}</td><td>{item['qty']}</td><td>{item['price']} جنيه</td><td style='font-weight: bold;'>{item['final_total']} جنيه</td></tr>"
     
     if discount_fixed > 0:
@@ -187,39 +186,63 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
     standard_table_td += f"<tr style='background:#f2f2f2; font-weight:bold; font-size:1.1em;'><td colspan='4' style='text-align:left;'>الصافي الإجمالي المطلوب سداده:</td><td style='color:#d9534f;'>{total_invoice_amount} جنيه</td></tr>"
     standard_table_td += f"<tr style='background:#fafafa;'><td colspan='5' style='text-align:right; font-size:0.95em;'><b>التفقيط المالي للصافي:</b> {arabic_total_words}</td></tr>"
     
-    full_triple_block = ""
+    # كود تهيئة الورقة والمقاس A5 عند تفعيل أمر الطباعة بالمتصفح
+    print_style_setting = """
+    <style>
+        @media print {
+            @page {
+                size: A5 portrait;
+                margin: 8mm 8mm 8mm 8mm;
+            }
+            body {
+                background: #fff;
+                color: #000;
+                direction: rtl;
+            }
+            .invoice-card-print {
+                border: 1px solid #000 !important;
+                box-shadow: none !important;
+                padding: 10px !important;
+                margin: 0 0 0 0 !important;
+                page-break-after: always; /* يجعل كل نسخة تطبع في ورقة A5 منفصلة تلقائياً */
+                height: auto;
+            }
+            .no-print { display: none !important; }
+        }
+        .items-table th { background:#f2f2f2 !important; color:#333 !important; padding:6px; border:1px solid #ddd; font-weight:bold; }
+        .items-table td { padding:6px; border:1px solid #ddd; }
+    </style>
+    """
+    
+    full_triple_block = print_style_setting
     receipt_titles = ["نسخة الحسابات والإدارة العامة", "نسخة العميل والمستلم", "نسخة بوابات وأمن المخازن"]
     
     for title in receipt_titles:
         full_triple_block += f"""
-        <div class='invoice-card-print' style='direction: rtl; text-align: right; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; border: 2px dashed #bbb; padding: 20px; margin-bottom: 35px; background: #fff; border-radius: 8px;'>
-            <table style='width:100%; border-collapse:collapse; margin-bottom:10px;'>
+        <div class='invoice-card-print' style='direction: rtl; text-align: right; font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; border: 2px dashed #bbb; padding: 18px; margin-bottom: 30px; background: #fff; border-radius: 8px;'>
+            <table style='width:100%; border-collapse:collapse; margin-bottom:8px;'>
                 <tr>
                     <td style='text-align:right; vertical-align:middle;'>
-                        <h2 style='margin:0; color:#2c3e50;'>{sh_name}</h2>
-                        <p style='margin:4px 0; font-size:0.9em; color:#7f8c8d;'>{sh_address} | تليفون: {sh_phone}</p>
+                        <h3 style='margin:0; color:#2c3e50; font-size:1.3em;'>{sh_name}</h3>
+                        <p style='margin:4px 0; font-size:0.85em; color:#7f8c8d;'>{sh_address} | تليفون: {sh_phone}</p>
                     </td>
                     <td style='text-align:left; vertical-align:middle;'>
-                        <span style='background:#34495e; color:#fff; padding:6px 14px; font-size:0.95em; font-weight:bold; border-radius:4px;'>{title}</span>
-                        <h4 style='margin:10px 0 0 0; color:#e74c3c;'>رقم الفاتورة: {inv_id}</h4>
+                        <span style='background:#34495e; color:#fff; padding:4px 10px; font-size:0.85em; font-weight:bold; border-radius:4px;'>{title}</span>
+                        <h5 style='margin:8px 0 0 0; color:#e74c3c; font-size:0.95em;'>رقم الفاتورة: {inv_id}</h5>
                     </td>
                 </tr>
             </table>
-            <hr style='border:0; border-top:1px solid #eee; margin:10px 0;'>
+            <hr style='border:0; border-top:1px solid #eee; margin:8px 0;'>
             
-            <table style='width:100%; font-size:0.95em; background:#fafafa; padding:8px; border-radius:4px; margin-bottom:15px; border:1px solid #eaeaea;'>
+            <table style='width:100%; font-size:0.85em; background:#fafafa; padding:6px; border-radius:4px; margin-bottom:12px; border:1px solid #eaeaea;'>
                 <tr><td><b>اسم العميل:</b> {client_name}</td><td><b>تاريخ ووقـت الإصدار:</b> {datetime_str}</td></tr>
                 <tr><td><b>رقم الهاتف:</b> {phone}</td><td><b>طبيعة السداد الفوري:</b> <span style='font-weight:bold; color:#2980b9;'>{pay_type}</span></td></tr>
                 <tr><td><b>عنوان العميل:</b> {address}</td><td><b>المسؤول المصدر:</b> {user}</td></tr>
                 {collect_info}
             </table>
             
-            <table class='items-table' style='width:100%; border-collapse:collapse; text-align:center; font-size:0.95em;'>
+            <table class='items-table' style='width:100%; border-collapse:collapse; text-align:center; font-size:0.85em;'>
                 <thead>
-                    <style>
-                        .items-table th {{ background:#f2f2f2; color:#333; padding:8px; border:1px solid #ddd; font-weight:bold; }}
-                        .items-table td {{ padding:8px; border:1px solid #ddd; }}
-                    </style>
                     {standard_table_th}
                 </thead>
                 <tbody>
@@ -227,7 +250,7 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
                 </tbody>
             </table>
             
-            <table style='width:100%; margin-top:20px; font-size:0.85em; text-align:center; color:#7f8c8d;'>
+            <table style='width:100%; margin-top:15px; font-size:0.8em; text-align:center; color:#7f8c8d;'>
                 <tr>
                     <td><b>توقيع المستلم البائع</b><br><br>........................</td>
                     <td><b>توقيع أمن البوابة</b><br><br>........................</td>
@@ -237,7 +260,6 @@ def generate_triple_invoice_html(inv_id, datetime_str, client_name, phone, addre
         </div>
         """
     return full_triple_block
-
 def get_download_link(html_content, filename="invoice.html"):
     b64 = base64.b64encode(html_content.encode('utf-8-sig')).decode()
     return f'<div class="download-btn-area"><a href="data:text/html;base64,{b64}" download="{filename}" style="display: block; padding: 12px; color: white; background-color: #007bff; text-decoration: none; border-radius: 5px; font-weight: bold; text-align: center; margin: 15px auto; max-width:400px;">📥 اضغط هنا لتنزيل وحفظ ملف الفاتورة في التحميلات فوراً</a></div>'
